@@ -216,4 +216,5 @@ After upgrading the code, open `install/setup.php` once and it adds any new inde
 - `app/`, `config/`, `storage/`, `database/` and dotfiles such as `.env` are blocked by `.htaccess`. On Nginx or IIS, add equivalent deny rules.
 - Set `APP_DEBUG=false` in production.
 #   M u l t i _ T a b u l a t i o n _ S y s t e m  
+ #   M u l t i _ T a b u l a t i o n _ S y s t e m  
  
