@@ -1,0 +1,29 @@
+Options -Indexes
+
+# Never serve environment files, internal code, storage or SQL dumps
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+<FilesMatch "\.(sql|md|log|example)$">
+    Require all denied
+</FilesMatch>
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(app|config|views|storage|database|deploy)(/|$) - [F,L]
+</IfModule>
+
+# Pages always revalidate so design/code updates show without a hard refresh
+<IfModule mod_headers.c>
+    <FilesMatch "\.html$">
+        Header set Cache-Control "no-cache, must-revalidate"
+    </FilesMatch>
+</IfModule>
+
+# Slow signal: never cut off an upload while it is still arriving, or a long document scan.
+# (php_value only works with mod_php; .user.ini covers PHP-FPM / CGI hosts.)
+<IfModule php_module>
+    php_value max_input_time -1
+    php_value max_execution_time 0
+    php_value upload_max_filesize 64M
+    php_value post_max_size 64M
+</IfModule>

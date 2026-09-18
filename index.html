@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0B1A12">
+  <title>Sign in · PHINMA COC Tabulation</title>
+  <link rel="icon" type="image/png" href="assets/images/app-icon.png">
+  <link rel="stylesheet" href="assets/css/app.css?v=20260917091036">
+</head>
+<body class="auth-body">
+  <main class="auth-center">
+    <div class="auth-deco" aria-hidden="true">
+      <span class="deco-circle c1"></span>
+      <span class="deco-circle c2"></span>
+      <span class="deco-circle c3"></span>
+      <span class="deco-ring r1"></span>
+      <span class="deco-ring r2"></span>
+      <span class="deco-ring r3"></span>
+      <span class="deco-dots d1"></span>
+      <span class="deco-dots d2"></span>
+      <svg class="deco-waves" viewBox="0 0 1440 320" preserveAspectRatio="none">
+        <path class="wave w1" d="M0,192 C160,150 320,120 480,144 C640,168 800,256 960,250 C1120,244 1280,160 1440,150 L1440,320 L0,320 Z"/>
+        <path class="wave w2" d="M0,230 C200,200 360,250 560,240 C760,230 900,170 1100,180 C1260,188 1360,230 1440,240 L1440,320 L0,320 Z"/>
+        <path class="wave w3" d="M0,270 C240,250 420,300 660,285 C900,270 1080,240 1260,255 C1350,262 1400,275 1440,280 L1440,320 L0,320 Z"/>
+      </svg>
+    </div>
+    <div class="auth-box" aria-labelledby="signin-title">
+      <header class="auth-box-head">
+        <img src="assets/images/app-icon.png" alt="PHINMA Education">
+        <span class="auth-box-school">PHINMA Cagayan de Oro College</span>
+        <span class="auth-box-system">Tabulation System</span>
+      </header>
+
+      <div class="auth-box-body">
+        <h1 id="signin-title">Sign in</h1>
+        <p class="auth-sub">Score or manage your event.</p>
+        <div id="login-alert" role="alert"></div>
+
+        <form id="login-form" class="login-form" autocomplete="on" novalidate>
+          <label class="field"><span>Username</span>
+            <span class="input-wrap">
+              <span class="input-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+              <input name="username" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Administrator or Program Head">
+            </span>
+          </label>
+
+          <label class="field"><span>Password</span>
+            <span class="input-wrap has-action">
+              <span class="input-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>
+              <input name="password" type="password" autocomplete="current-password" placeholder="Enter your password">
+              <button type="button" class="input-action" data-toggle-password aria-label="Show password" title="Show password">
+                <svg class="eye-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg class="eye-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24M1 1l22 22"/></svg>
+              </button>
+            </span>
+          </label>
+
+          <div class="or-divider" aria-hidden="true"><span>or</span></div>
+
+          <label class="field"><span>Access code <em>(judges &amp; facilitators)</em></span>
+            <span class="input-wrap">
+              <span class="input-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.78 7.78 5.5 5.5 0 0 1 7.78-7.78zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg></span>
+              <input name="code" class="code-input" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false"
+                     maxlength="9" placeholder="XXXX-XXXX" aria-describedby="code-hint">
+            </span>
+          </label>
+          <p class="hint hint-info" id="code-hint">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            <span>Staff sign in with a username and password. Judges and facilitators only need the code printed on their slip.</span>
+          </p>
+
+          <button class="btn btn-primary btn-lg btn-block login-submit" type="submit">
+            <span>Sign in</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16l4-4-4-4M8 12h8"/></svg>
+          </button>
+        </form>
+      </div>
+    </div>
+    <p class="auth-center-foot">© PHINMA Cagayan de Oro College · Multi-Event Tabulation System</p>
+  </main>
+  <script src="assets/js/app.js?v=20260917091036"></script>
+  <script src="assets/js/pages/login.js?v=20260917091036"></script>
+</body>
+</html>
