@@ -394,6 +394,14 @@
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
     moon: '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
     grid: '<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>',
+    monitor: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>',
+    globe: '<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>',
+    spotlight: '<circle cx="12" cy="8" r="4"/><path d="M4 22c1-4 4-6 8-6s7 2 8 6"/>',
+    message: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    power: '<path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"/>',
+    sparkle: '<path d="M11 3l1.8 5.2L18 10l-5.2 1.8L11 17l-1.8-5.2L4 10l5.2-1.8z"/><path d="M19 3v4M17 5h4M18 16v3M16.5 17.5h3"/>',
+    star: '<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/>',
+    external: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/>',
   };
   App.icon = (name, cls = 'icon') =>
     `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
@@ -581,7 +589,10 @@
       { href: 'dashboard.html', icon: 'calendar', label: 'My events', key: 'events' },
       { href: 'account.html', icon: 'user', label: 'My account', key: 'account' },
     ],
-    facilitator: [{ href: 'event.html?id={event}', icon: 'calendar', label: 'Event console', key: 'events' }],
+    facilitator: [
+      { href: 'event.html?id={event}', icon: 'calendar', label: 'Event console', key: 'events' },
+      { href: 'control.html?event_id={event}', icon: 'monitor', label: 'Big screen', key: 'screen' },
+    ],
   };
 
   /**

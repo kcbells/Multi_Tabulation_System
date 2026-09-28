@@ -80,6 +80,12 @@ final class CriteriaController extends Controller
             ];
         }
 
+        $total = round(array_sum(array_column($clean, 'max_score')), 2);
+        if (!CriterionRepository::isValidTotal($total)) {
+            $diff = round(CriterionRepository::REQUIRED_TOTAL - $total, 2);
+            $this->fail('The criteria must add up to exactly 100 points. They add up to ' . $total . ' (' . ($diff > 0 ? $diff . ' points missing' : abs($diff) . ' points too many') . ').');
+        }
+
         $criteria = new CriterionRepository();
         if ((new ScoreRepository())->activityHasScores($activityId)) {
             $existing = $criteria->maxScores($activityId);
@@ -96,7 +102,6 @@ final class CriteriaController extends Controller
         }
 
         $criteria->sync($activityId, $clean);
-        $total = round(array_sum(array_column($clean, 'max_score')), 2);
         Log::record('criteria.saved', 'Saved ' . count($clean) . ' criteria (total ' . $total . ') for ' . Log::q($activity['title']), (int) $activity['event_id'], $activityId);
         $this->ok([], 'Criteria saved (' . count($clean) . ' items, total ' . $total . ').');
     }

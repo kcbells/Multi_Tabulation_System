@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS events (
     structure            ENUM('multi','single') NOT NULL DEFAULT 'multi',
     archived_at          DATETIME NULL,
     archived_by          INT UNSIGNED NULL,
+    is_public            TINYINT(1) NOT NULL DEFAULT 0,
     placement_points     VARCHAR(255) NOT NULL DEFAULT '[10,7,5]',
     participation_points DECIMAL(6,2) NOT NULL DEFAULT 2,
     owner_id             INT UNSIGNED NULL,
@@ -89,6 +90,7 @@ CREATE TABLE IF NOT EXISTS contestants (
     details     VARCHAR(255) NULL,
     color       VARCHAR(7) NULL,
     photo_file  VARCHAR(255) NULL,
+    stage_bg    VARCHAR(255) NULL,
     created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_contestants_activity FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE CASCADE,
     CONSTRAINT fk_contestants_team FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE SET NULL
@@ -202,4 +204,13 @@ CREATE TABLE IF NOT EXISTS activity_results (
     PRIMARY KEY (activity_id, contestant_id),
     CONSTRAINT fk_results_activity FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE CASCADE,
     CONSTRAINT fk_results_contestant FOREIGN KEY (contestant_id) REFERENCES contestants(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Big screen: what the event's display (TV / projector) shows right now, set from the control panel
+CREATE TABLE IF NOT EXISTS display_state (
+    event_id   INT UNSIGNED NOT NULL PRIMARY KEY,
+    state      TEXT NOT NULL,
+    version    INT UNSIGNED NOT NULL DEFAULT 1,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_display_event FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -111,4 +111,32 @@ final class EventRepository extends Repository
     {
         $this->db->execute('UPDATE events SET status = ? WHERE id = ?', [$status, $id]);
     }
+
+    /* ------------------------------------------------ public results page */
+
+    /** Published on the public results page (archived events never are). */
+    public function isPublic(int $id): bool
+    {
+        return (bool) $this->db->value('SELECT 1 FROM events WHERE id = ? AND is_public = 1 AND archived_at IS NULL', [$id]);
+    }
+
+    public function setPublic(int $id, bool $public): void
+    {
+        $this->db->execute('UPDATE events SET is_public = ? WHERE id = ?', [$public ? 1 : 0, $id]);
+    }
+
+    /** Published events with the counts shown on the public events list. */
+    public function publicList(): array
+    {
+        return $this->db->all(
+            "SELECT e.id, e.title, e.venue, e.status, e.structure, e.start_at, e.end_at, e.start_date, e.end_date,
+                    (SELECT COUNT(*) FROM activities a WHERE a.event_id = e.id) AS activities,
+                    (SELECT COUNT(*) FROM activities a WHERE a.event_id = e.id AND a.status = 'open') AS live_activities,
+                    (SELECT COUNT(*) FROM activities a WHERE a.event_id = e.id AND a.status = 'closed') AS final_activities,
+                    (SELECT COUNT(*) FROM teams t WHERE t.event_id = e.id) AS teams
+             FROM events e
+             WHERE e.is_public = 1 AND e.archived_at IS NULL AND e.status <> 'draft'
+             ORDER BY FIELD(e.status, 'ongoing', 'upcoming', 'completed', 'cancelled'), e.start_at DESC, e.id DESC"
+        );
+    }
 }

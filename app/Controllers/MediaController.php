@@ -8,6 +8,7 @@ use App\Core\Controller;
 use App\Core\Gate;
 use App\Core\HttpException;
 use App\Repositories\ContestantRepository;
+use App\Repositories\EventRepository;
 use App\Repositories\TeamRepository;
 use App\Services\ActivityLogger as Log;
 use App\Services\DocumentIntake;
@@ -18,12 +19,14 @@ use Throwable;
 
 /**
  * Contestant pictures and team logos. Files live on the file server; the
- * browser reads them through this controller so access stays per event.
+ * browser reads them through this controller so access stays per event
+ * (or open to anyone once the event is on the public results page).
  */
 final class MediaController extends Controller
 {
     private const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'webp'];
     private const MAX_BYTES = 5 * 1024 * 1024;
+    private const BACKGROUND_MAX_BYTES = 8 * 1024 * 1024;
 
     /* ------------------------------------------------ viewing (any role of the event) */
 
@@ -49,6 +52,9 @@ final class MediaController extends Controller
 
     private function authorizeView(int $eventId): void
     {
+        if ((new EventRepository())->isPublic($eventId)) {
+            return; // shown on the public results page anyway
+        }
         $user = $this->user();
         if (in_array($user['role'], ['judge', 'facilitator'], true)) {
             if ((int) $user['event_id'] !== $eventId) {
@@ -107,11 +113,51 @@ final class MediaController extends Controller
         $this->ok([], 'Logo removed.');
     }
 
+    /* ------------------------------------------------ big screen: On stage backgrounds */
+
+    /** A contestant's own stage background (each contestant has their own; there is no shared one). */
+    public function stage(): never
+    {
+        $c = (new ContestantRepository())->find($this->request->int('id')) ?? throw new HttpException('Not found.', 404);
+        $this->authorizeView((int) $c['event_id']);
+        if (empty($c['stage_bg'])) {
+            throw new HttpException('No background.', 404);
+        }
+        (new DocumentIntake())->stream($c['stage_bg'], null);
+    }
+
+    public function uploadStageBackground(): never
+    {
+        $contestant = $this->stageContestant();
+        $key = $this->store($this->request->file('file'), sprintf('pictures/event-%d/stage-contestant-%d', $contestant['event_id'], $contestant['id']), self::BACKGROUND_MAX_BYTES);
+        (new ContestantRepository())->setStageBackground((int) $contestant['id'], $key);
+        $this->deleteQuietly($contestant['stage_bg']);
+        Log::record('display.background', 'Set the stage background of ' . Log::q($contestant['name']), (int) $contestant['event_id'], (int) $contestant['activity_id']);
+        $this->ok([], 'Background saved.');
+    }
+
+    public function removeStageBackground(): never
+    {
+        $contestant = $this->stageContestant();
+        (new ContestantRepository())->setStageBackground((int) $contestant['id'], null);
+        $this->deleteQuietly($contestant['stage_bg']);
+        Log::record('display.background', 'Removed the stage background of ' . Log::q($contestant['name']), (int) $contestant['event_id'], (int) $contestant['activity_id']);
+        $this->ok([], 'Background removed.');
+    }
+
+    /** Staff and facilitators: contestants of an event they manage. */
+    private function stageContestant(): array
+    {
+        $contestant = (new ContestantRepository())->find($this->request->int('contestant_id')) ?? throw new HttpException('Contestant not found.', 404);
+        Gate::authorizeEvent((int) $contestant['event_id']);
+        return $contestant;
+    }
+
     /* ------------------------------------------------ internals */
 
-    private function store(?array $file, string $prefix): string
+    private function store(?array $file, string $prefix, int $maxBytes = self::MAX_BYTES): string
     {
-        $upload = new UploadedFile($file, self::IMAGE_EXT, self::MAX_BYTES);
+        $upload = new UploadedFile($file, self::IMAGE_EXT, $maxBytes);
         $scratch = TempFile::create($upload->extension);
         try {
             if (!move_uploaded_file($upload->tmpPath, $scratch)) {

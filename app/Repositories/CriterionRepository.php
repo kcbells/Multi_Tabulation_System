@@ -7,6 +7,19 @@ use App\Core\Database;
 
 final class CriterionRepository extends Repository
 {
+    /** Criteria of a score-based activity must add up to exactly this many points. */
+    public const REQUIRED_TOTAL = 100.0;
+
+    public static function isValidTotal(float $total): bool
+    {
+        return abs($total - self::REQUIRED_TOTAL) < 0.005;
+    }
+
+    public function total(int $activityId): float
+    {
+        return (float) $this->db->value('SELECT COALESCE(SUM(max_score), 0) FROM criteria WHERE activity_id = ?', [$activityId]);
+    }
+
     public function forActivity(int $activityId): array
     {
         return $this->db->all(

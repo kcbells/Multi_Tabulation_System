@@ -63,8 +63,10 @@ final class ContestantController extends Controller
         $repo = new ContestantRepository();
         $contestant = $repo->find($this->request->int('id'));
         $repo->delete($this->request->int('id'), (int) $activity['id']);
-        if ($contestant && $contestant['photo_file'] && (int) $contestant['activity_id'] === (int) $activity['id']) {
-            (new \App\Services\DocumentIntake())->deleteQuietly($contestant['photo_file']);
+        if ($contestant && (int) $contestant['activity_id'] === (int) $activity['id']) {
+            foreach (array_filter([$contestant['photo_file'], $contestant['stage_bg'] ?? null]) as $key) {
+                (new \App\Services\DocumentIntake())->deleteQuietly($key);
+            }
         }
         Log::record('contestant.deleted', 'Removed a contestant from ' . Log::q($activity['title']), (int) $activity['event_id'], (int) $activity['id']);
         $this->ok([], 'Contestant removed.');

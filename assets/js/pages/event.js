@@ -30,6 +30,7 @@
     const judges = codes.filter((c) => c.role === 'judge');
     const facilitators = codes.filter((c) => c.role === 'facilitator');
     const single = event.structure === 'single';
+    const isPublic = Number(event.is_public) === 1;
     const competition = single ? activities[0] : null;
 
     view.innerHTML = `
@@ -65,6 +66,9 @@
               ${Forms.STATUSES.map((s) => `<option value="${s}" ${event.status === s ? 'selected' : ''}>${s[0].toUpperCase() + s.slice(1)}</option>`).join('')}
             </select></label>
           <a class="btn" href="${App.page('print.html?type=overall&id=' + event.id)}" target="_blank">${App.icon('print')} Print standings</a>
+          ${archived ? '' : `<a class="btn" href="${App.page('control.html?event_id=' + event.id)}" title="Control what the TV / projector shows">${App.icon('monitor')} Big screen</a>`}
+          ${canConfigure ? `<button class="btn ${isPublic ? 'btn-primary' : ''}" data-public title="${isPublic ? 'Shown on the public results page — click to hide' : 'Show standings on the public results page (no sign-in)'}">${App.icon('globe')} ${isPublic ? 'Public: on' : 'Publish results'}</button>` : ''}
+          ${isPublic && !archived ? `<a class="btn" href="${App.page('public.html?event=' + event.id)}" target="_blank" rel="noopener" title="Open the public results page">${App.icon('external')} Public page</a>` : ''}
           ${competition ? `<a class="btn btn-primary" href="${App.page('activity.html?id=' + competition.id + (competition.format === 'score' ? '' : '#board'))}">${App.icon(Forms.FORMATS[competition.format].icon)} Open competition</a>` : ''}
           ${canConfigure && !single ? `<button class="btn" data-scan-doc>${App.icon('scan')} Scan document</button>` : ''}
           ${canConfigure ? `<button class="btn" data-edit-event>${App.icon('edit')} Edit event</button>` : ''}
@@ -79,7 +83,7 @@
         <button data-tab="activities">${single ? 'Competition' : `Activities<span class="count">${activities.length}</span>`}</button>
         <button data-tab="teams">Teams<span class="count">${teams.length}</span></button>
         <button data-tab="codes" ${canConfigure ? '' : 'hidden'}>Access codes<span class="count">${codes.length}</span></button>
-        <button data-tab="standings">${single ? 'Team standings' : 'Overall standings'}</button>
+        <button data-tab="standings">${single ? 'Standings' : 'Overall standings'}</button>
         ${seeLogs() ? '<button data-tab="logs">Activity logs</button>' : ''}
       </div>
 
@@ -287,7 +291,7 @@
 
       <div class="row-between" style="margin:26px 0 10px"><h2>Facilitators <span class="muted small">(${facilitators.length})</span></h2>
         <button class="btn btn-dark" data-add-code="facilitator">${App.icon('plus')} Add facilitator</button></div>
-      ${facilitators.length ? `<div class="grid-cards">${facilitators.map(codeCard).join('')}</div>` : `<div class="card">${App.empty('No facilitators yet', 'Facilitators run the event on the ground: contestants, scoring status and live results.', 'key')}</div>`}
+      ${facilitators.length ? `<div class="grid-cards">${facilitators.map(codeCard).join('')}</div>` : `<div class="card">${App.empty('No facilitators yet', 'Facilitators run the event on the ground: contestants, scoring status, live results and the big screen.', 'key')}</div>`}
     `;
   }
 
@@ -399,7 +403,7 @@
         await reload();
         App.modal({
           title: 'Access code created',
-          body: `<p>Share this code with the ${b.dataset.addCode}:</p><div class="code-value text-center" style="font-size:2rem;padding:12px 0">${esc(r.code)}</div>`,
+          body: `<p>Share this code with the ${esc(App.roleLabel(b.dataset.addCode).toLowerCase())}:</p><div class="code-value text-center" style="font-size:2rem;padding:12px 0">${esc(r.code)}</div>`,
           submitText: null, cancelText: 'Done',
         });
       }
@@ -409,6 +413,16 @@
       (await Forms.accessCode(eventId, c.role, data.activities, c)) && reload();
     });
     on('[data-copy]', (b) => App.copy(b.dataset.copy));
+    on('[data-public]', async (b) => {
+      const makePublic = Number(data.event.is_public) !== 1;
+      if (makePublic && !(await App.confirm({
+        title: 'Publish results?',
+        message: `Anyone with the link can see <strong>${esc(data.event.title)}</strong> on the public results page: the activities, overall standings, brackets and rankings as they happen. Score-based results appear only when the activity is <strong>closed (final)</strong>, and judges’ scores are never shown.`,
+        confirmText: 'Publish',
+      }))) return;
+      App.setLoading(b, true);
+      try { App.toast((await App.post('events.publish', { id: eventId, public: makePublic })).message, 'success'); reload(); } catch (err) { App.fail(err); App.setLoading(b, false); }
+    });
     on('[data-regen]', async (b) => {
       const c = data.codes.find((x) => x.id == b.dataset.regen);
       if (!(await App.confirm({ title: 'Generate a new code?', message: `The current code for <strong>${esc(c.name)}</strong> will stop working immediately.`, confirmText: 'Generate new code' }))) return;

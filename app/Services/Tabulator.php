@@ -22,6 +22,8 @@ use App\Repositories\TeamRepository;
  * Event overall: each activity that counts toward the overall awards
  * placement points to the team of every ranked contestant (tied ranks share
  * points); remaining ranked contestants earn participation points.
+ * A solo activity (no entry belongs to a team) is reported with its full
+ * individual ranking instead, since there are no teams to give points to.
  */
 final class Tabulator
 {
@@ -143,7 +145,11 @@ final class Tabulator
         return strtolower(preg_replace('/[^a-z0-9]+/i', '', $name));
     }
 
-    public function overall(int $eventId, bool $finalOnly = false, bool $includeDrafts = false): array
+    /**
+     * @param bool $hideUnfinishedScores public page and big screen: score-based activities count (and show
+     *                                   winners) only once they are final, so judges' live scores never leak
+     */
+    public function overall(int $eventId, bool $finalOnly = false, bool $includeDrafts = false, bool $hideUnfinishedScores = false): array
     {
         $event = (new EventRepository())->find($eventId) ?? throw new HttpException('Event not found.', 404);
         $points = array_values(array_map('floatval', json_decode((string) $event['placement_points'], true) ?: []));
@@ -167,11 +173,21 @@ final class Tabulator
         $placements = new PlacementService();
         foreach ($this->activities->forEvent($eventId) as $a) {
             $aid = (int) $a['id'];
+            if ($hideUnfinishedScores && $a['format'] === 'score' && $a['status'] !== 'closed') {
+                $summary[] = [
+                    'id' => $aid, 'title' => $a['title'], 'status' => $a['status'], 'format' => $a['format'],
+                    'included' => false, 'counts_to_overall' => (bool) $a['counts_to_overall'],
+                    'scored' => false, 'winners' => [], 'unlinked' => 0, 'hidden' => true, 'solo' => false, 'ranking' => [],
+                ];
+                continue;
+            }
             $included = (bool) $a['counts_to_overall'] && (!$finalOnly || $a['status'] === 'closed');
             $result = $placements->forActivity($a, $includeDrafts);
             $winners = [];
             $scored = false;
             $unlinked = 0;
+            $teamOf = fn(array $row) => $row['team_id'] ?? $teamByName[self::nameKey((string) $row['name'])] ?? null;
+            $solo = $result['rows'] && !array_filter($result['rows'], fn($row) => isset($standings[$teamOf($row)]));
             foreach ($result['rows'] as $row) {
                 if ($row['rank'] === null) {
                     continue;
@@ -180,7 +196,7 @@ final class Tabulator
                 if ($row['rank'] <= 3) {
                     $winners[] = ['rank' => $row['rank'], 'name' => $row['name'], 'team' => $row['team_name'], 'color' => $row['color'] ?? null, 'photo' => $row['photo'] ?? null, 'display' => $row['display']];
                 }
-                $tid = $row['team_id'] ?? $teamByName[self::nameKey((string) $row['name'])] ?? null;
+                $tid = $teamOf($row);
                 if ($tid === null || !isset($standings[$tid])) {
                     $unlinked++;
                     continue;
@@ -198,7 +214,13 @@ final class Tabulator
             $summary[] = [
                 'id' => $aid, 'title' => $a['title'], 'status' => $a['status'], 'format' => $a['format'],
                 'included' => $included, 'counts_to_overall' => (bool) $a['counts_to_overall'],
-                'scored' => $scored, 'winners' => $winners, 'unlinked' => $unlinked,
+                'scored' => $scored, 'winners' => $winners,
+                'unlinked' => $solo ? 0 : $unlinked, // solo entries are not missing a team
+                'solo' => $solo,
+                'ranking' => $solo ? array_map(fn($row) => [
+                    'rank' => $row['rank'], 'number' => $row['number'] ?? null, 'name' => $row['name'],
+                    'display' => $row['display'], 'color' => $row['color'] ?? null, 'photo' => $row['photo'] ?? null,
+                ], $result['rows']) : [],
             ];
         }
 

@@ -54,6 +54,17 @@ final class EventController extends Controller
         $this->ok(['status' => $status], 'Event status: ' . ucfirst($status) . '.');
     }
 
+    /** Shows or hides the event on the public results page. */
+    public function publish(): never
+    {
+        $id = $this->request->int('id');
+        Gate::authorizeEvent($id, true);
+        $public = $this->request->bool('public');
+        $this->events->setPublic($id, $public);
+        Log::record('event.public', $public ? 'Published the event on the public results page' : 'Removed the event from the public results page', $id);
+        $this->ok(['is_public' => $public], $public ? 'The event is now on the public results page.' : 'The event is no longer on the public results page.');
+    }
+
     public function __construct(Request $request)
     {
         parent::__construct($request);

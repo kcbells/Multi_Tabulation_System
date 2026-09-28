@@ -29,7 +29,7 @@ final class PlacementService
         if ($format === 'score') {
             $result = (new Tabulator())->activity($aid, $includeDrafts);
             $rows = array_map(fn($r) => [
-                'id' => $r['id'], 'name' => $r['name'], 'team_id' => $r['team_id'], 'team_name' => $r['team_name'], 'color' => $r['color'] ?? null, 'photo' => $r['photo'] ?? null,
+                'id' => $r['id'], 'number' => $r['number'] ?? null, 'name' => $r['name'], 'team_id' => $r['team_id'], 'team_name' => $r['team_name'], 'color' => $r['color'] ?? null, 'photo' => $r['photo'] ?? null,
                 'rank' => $r['rank'], 'display' => $r['average'] === null ? '' : number_format((float) $r['average'], 2) . ' avg',
             ], $result['rows']);
             return ['format' => $format, 'rows' => $rows, 'complete' => $activity['status'] === 'closed'];
@@ -41,7 +41,7 @@ final class PlacementService
             $rows = RankingService::standings($contestants, (new ActivityResultRepository())->forActivity($aid), (string) ($activity['rank_direction'] ?? 'desc'));
             $label = $activity['score_label'] ?: '';
             return ['format' => $format, 'complete' => $activity['status'] === 'closed', 'rows' => array_map(fn($r) => [
-                'id' => $r['id'], 'name' => $r['name'], 'team_id' => $r['team_id'], 'team_name' => $r['team_name'], 'color' => $r['color'] ?? null, 'photo' => $r['photo'] ?? null,
+                'id' => $r['id'], 'number' => $r['number'] ?? null, 'name' => $r['name'], 'team_id' => $r['team_id'], 'team_name' => $r['team_name'], 'color' => $r['color'] ?? null, 'photo' => $r['photo'] ?? null,
                 'rank' => $r['rank'], 'display' => $r['value'] === null ? '' : rtrim(rtrim(number_format($r['value'], 3, '.', ''), '0'), '.') . ($label ? " $label" : ''),
             ], $rows)];
         }
@@ -51,7 +51,7 @@ final class PlacementService
         if ($format === 'round_robin') {
             $rows = RoundRobinService::standings($contestants, $matches);
             return ['format' => $format, 'complete' => $activity['status'] === 'closed', 'rows' => array_map(fn($r) => [
-                'id' => $r['id'], 'name' => $r['name'], 'team_id' => $r['team_id'], 'team_name' => $r['team_name'], 'color' => $r['color'] ?? null, 'photo' => $r['photo'] ?? null,
+                'id' => $r['id'], 'number' => $r['number'] ?? null, 'name' => $r['name'], 'team_id' => $r['team_id'], 'team_name' => $r['team_name'], 'color' => $r['color'] ?? null, 'photo' => $r['photo'] ?? null,
                 'rank' => $r['rank'], 'display' => $r['played'] ? "{$r['points']} pts ({$r['won']}-{$r['drawn']}-{$r['lost']})" : '',
             ], $rows)];
         }
@@ -63,7 +63,7 @@ final class PlacementService
         foreach ($contestants as $c) {
             $rank = $ranks[(int) $c['id']] ?? null;
             $rows[] = [
-                'id' => (int) $c['id'], 'name' => $c['name'],
+                'id' => (int) $c['id'], 'number' => (int) $c['number'], 'name' => $c['name'],
                 'team_id' => $c['team_id'] !== null ? (int) $c['team_id'] : null, 'team_name' => $c['team_name'],
                 'color' => $c['color'] ?? null, 'photo' => $c['photo'] ?? null,
                 'rank' => $rank, 'display' => $rank === null ? '' : ($labels[$rank] ?? 'Top ' . (2 * $rank - 2)),

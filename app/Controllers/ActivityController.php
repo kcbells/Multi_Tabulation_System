@@ -158,8 +158,12 @@ final class ActivityController extends Controller
             }
             $format = $activity['format'] ?? 'score';
             if ($format === 'score') {
-                if (!(new CriterionRepository())->exists($id)) {
+                $criteria = new CriterionRepository();
+                if (!$criteria->exists($id)) {
                     $this->fail('Add the criteria before opening scoring.');
+                }
+                if (!CriterionRepository::isValidTotal($total = round($criteria->total($id), 2))) {
+                    $this->fail('The criteria add up to ' . $total . ' points. Fix them to total exactly 100 before opening scoring.');
                 }
                 if (!$this->activities->assignedJudgeIds($id)) {
                     $this->fail('Assign at least one judge before opening scoring.');

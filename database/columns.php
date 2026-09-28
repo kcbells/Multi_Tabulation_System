@@ -17,6 +17,7 @@ return [
         'structure'         => "ENUM('multi','single') NOT NULL DEFAULT 'multi' AFTER `default_format`",
         'archived_at'       => 'DATETIME NULL AFTER `structure`',
         'archived_by'       => 'INT UNSIGNED NULL AFTER `archived_at`',
+        'is_public'         => 'TINYINT(1) NOT NULL DEFAULT 0 AFTER `archived_by`',
     ],
     'teams' => [
         'color'     => 'VARCHAR(7) NULL AFTER `name`',
@@ -25,6 +26,7 @@ return [
     'contestants' => [
         'color'      => 'VARCHAR(7) NULL AFTER `details`',
         'photo_file' => 'VARCHAR(255) NULL AFTER `color`',
+        'stage_bg'   => 'VARCHAR(255) NULL AFTER `photo_file`',
     ],
     'activities' => [
         'nature'         => 'VARCHAR(80) NULL AFTER `venue`',

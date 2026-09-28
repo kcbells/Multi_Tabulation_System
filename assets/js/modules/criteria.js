@@ -8,6 +8,13 @@
 
   const reviewKey = (id) => 'criteria-review-' + id;
 
+  /** Criteria must add up to exactly 100 points (the server checks this too). */
+  Criteria.totalOk = (total) => Math.abs(total - 100) < 0.005;
+  Criteria.totalProblem = (total) => {
+    const diff = Math.round((100 - total) * 100) / 100;
+    return `Criteria must total exactly 100 points — ${diff > 0 ? `${num(diff)} missing` : `${num(-diff)} too many`}.`;
+  };
+
   /** Keeps a scan result (from the activity form) until the Criteria tab opens it for review. */
   Criteria.stashReview = (activityId, scan) => {
     Criteria.pending = { activityId: Number(activityId), scan };
@@ -59,7 +66,7 @@
                   <div class="body"><strong>${esc(c.name)}</strong>${c.description ? `<div class="desc">${esc(c.description)}</div>` : ''}</div>
                   <span class="pts">${num(c.max_score)} <span class="muted small">pts</span></span></li>`).join('')}
               </ol>
-              <div class="total-bar ${Math.abs(total - 100) < 0.01 ? 'ok' : ''}" style="margin-top:12px"><span>Total</span><strong>${num(total)}</strong></div>`
+              <div class="total-bar ${Criteria.totalOk(total) ? 'ok' : 'bad'}" style="margin-top:12px"><span>${Criteria.totalOk(total) ? 'Total' : Criteria.totalProblem(total) + ' Scoring cannot be opened until this is fixed.'}</span><strong>${num(total)} / 100</strong></div>`
               : App.empty('No criteria yet', opts.canConfigure ? 'Upload the criteria sheet — the system reads it automatically.' : 'The organizer has not added criteria yet.', 'list')}
             ${opts.canConfigure ? uploadBlock(list.length > 0) : ''}
           </div>
@@ -246,9 +253,11 @@
       syncFromDom();
       const total = state.rows.reduce((s, r) => s + (Number(r.max_score) || 0), 0);
       const bar = root.querySelector('[data-total]');
-      const ok = Math.abs(total - 100) < 0.01;
-      bar.className = 'total-bar' + (ok ? ' ok' : '');
-      bar.innerHTML = `<span>${ok ? 'Total is 100 — looks right' : 'Total points (usually 100)'}</span><strong>${num(total)}</strong>`;
+      const ok = Criteria.totalOk(total);
+      bar.className = 'total-bar' + (ok ? ' ok' : ' bad');
+      bar.innerHTML = `<span>${ok ? 'Total is 100 — ready to save' : Criteria.totalProblem(total)}</span><strong>${num(total)} / 100</strong>`;
+      const btn = root.querySelector('[data-save]');
+      if (btn) btn.disabled = !ok;
     }
 
     async function save(e) {
@@ -256,7 +265,7 @@
       const rows = state.rows.filter((r) => r.name.trim() || String(r.max_score).trim());
       if (!rows.length) return App.toast('Add at least one criterion.', 'error');
       const total = rows.reduce((s, r) => s + (Number(r.max_score) || 0), 0);
-      if (Math.abs(total - 100) >= 0.01 && !(await App.confirm({ title: 'Total is not 100', message: `The criteria add up to <strong>${num(total)}</strong> points. Save anyway?`, confirmText: 'Save anyway' }))) return;
+      if (!Criteria.totalOk(total)) return App.toast(Criteria.totalProblem(total), 'error', 6000);
       const btn = e.currentTarget;
       App.setLoading(btn, true);
       try {

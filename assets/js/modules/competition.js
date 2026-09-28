@@ -481,4 +481,6 @@
   };
 
   Competition.roundName = roundName;
+  /** Read-only bracket (public results page and big screen). */
+  Competition.bracketView = (data) => bracketHtml(data, false);
 })();

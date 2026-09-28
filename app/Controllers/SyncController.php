@@ -25,6 +25,12 @@ final class SyncController extends Controller
         } elseif ($eventId > 0) {
             Gate::authorizeEvent($eventId);
         }
+        $this->ok(['v' => self::fingerprint($eventId)]);
+    }
+
+    /** Short hash of everything that can change what an event (or, with 0, the whole system) shows. */
+    public static function fingerprint(int $eventId): string
+    {
         $db = Database::instance();
         if ($eventId > 0) {
             $parts = [
@@ -44,6 +50,6 @@ final class SyncController extends Controller
                 $db->one('SELECT COUNT(*) n, MAX(updated_at) t FROM activity_results'),
             ];
         }
-        $this->ok(['v' => substr(md5(json_encode($parts)), 0, 16)]);
+        return substr(md5(json_encode($parts)), 0, 16);
     }
 }

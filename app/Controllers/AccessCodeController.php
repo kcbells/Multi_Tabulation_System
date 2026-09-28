@@ -12,6 +12,8 @@ use App\Services\ActivityLogger as Log;
 /** Judge and facilitator access codes (no accounts needed). */
 final class AccessCodeController extends Controller
 {
+    private const ROLES = ['judge', 'facilitator'];
+
     private AccessCodeRepository $codes;
 
     public function __construct(Request $request)
@@ -41,7 +43,7 @@ final class AccessCodeController extends Controller
             $eventId = $this->request->int('event_id');
             Gate::authorizeEvent($eventId, true);
             $role = $this->request->string('role', 20);
-            if (!in_array($role, ['judge', 'facilitator'], true)) {
+            if (!in_array($role, self::ROLES, true)) {
                 $this->fail('Choose judge or facilitator.');
             }
             $id = $this->codes->create($eventId, $role, $name);
@@ -65,7 +67,7 @@ final class AccessCodeController extends Controller
         $eventId = $this->request->int('event_id');
         Gate::authorizeEvent($eventId, true);
         $role = $this->request->string('role', 20);
-        if (!in_array($role, ['judge', 'facilitator'], true)) {
+        if (!in_array($role, self::ROLES, true)) {
             $this->fail('Choose judge or facilitator.');
         }
         $count = $this->request->int('count');

@@ -750,22 +750,28 @@
   };
 
   /** Judge or facilitator access code. activities: event activities (for judge assignment). */
+  const CODE_ROLES = {
+    judge: { title: 'judge', name: 'Judge name', placeholder: 'e.g. Judge 1 — Ms. Dela Cruz' },
+    facilitator: { title: 'facilitator', name: 'Facilitator name', placeholder: 'e.g. Stage facilitator' },
+  };
+
   Forms.accessCode = (eventId, role, activities, code = null) => {
     const assigned = new Set((code ? code.activity_ids : activities.map((a) => a.id)).map(Number));
     const isJudge = role === 'judge';
+    const r = CODE_ROLES[role] || CODE_ROLES.facilitator;
     return App.modal({
-      title: (code ? 'Edit ' : 'New ') + (isJudge ? 'judge' : 'facilitator'),
+      title: (code ? 'Edit ' : 'New ') + r.title,
       submitText: code ? 'Save' : 'Generate access code',
       body: `
         <div class="stack">
-          <label class="field"><span>${isJudge ? 'Judge name' : 'Facilitator name'}</span>
-            <input name="name" required maxlength="150" value="${esc(code ? code.name : '')}" placeholder="${isJudge ? 'e.g. Judge 1 — Ms. Dela Cruz' : 'e.g. Stage facilitator'}"></label>
+          <label class="field"><span>${r.name}</span>
+            <input name="name" required maxlength="150" value="${esc(code ? code.name : '')}" placeholder="${r.placeholder}"></label>
           ${isJudge ? `
             <div class="field"><span class="field-label">Activities this judge will score</span>
               ${activities.length ? activities.map((a) => `
                 <label class="check" style="padding:6px 0"><input type="checkbox" name="activity_ids[]" value="${a.id}" ${assigned.has(Number(a.id)) ? 'checked' : ''}>
                   <span>${esc(a.title)}</span></label>`).join('') : '<p class="muted small">No activities yet — you can assign them later.</p>'}
-            </div>` : '<p class="hint">Facilitators can manage contestants, open/close scoring, monitor judges and view live results for this event. They cannot edit criteria or access codes.</p>'}
+            </div>` : '<p class="hint">Facilitators can manage contestants, open/close scoring, monitor judges, view live results and run the big screen for this event. They cannot edit criteria or access codes.</p>'}
           ${code ? '' : '<p class="hint">An 8-character access code is generated automatically.</p>'}
         </div>`,
       onSubmit: async (data) => {

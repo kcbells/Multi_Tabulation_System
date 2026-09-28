@@ -260,6 +260,8 @@
       const lastStep = () => rows.length + 1;
       const rowOfStep = (step) => (step >= 1 && step <= rows.length ? rows[step - 1] : null);
       const needsWork = (r) => r.include && r.format === 'score' && !r.criteria.filter((c) => String(c.name).trim()).length;
+      // score-based criteria must total exactly 100 (the server refuses anything else)
+      const badTotal = (r) => r.include && r.format === 'score' && r.criteria.some((c) => String(c.name).trim()) && !Criteria.totalOk(totalOf(r));
       const judgesOf = (r) => judges.filter((j) => j.rows.has(r));
       const facsOf = (r) => facilitators.filter((f) => f.rows.has(r));
 
@@ -275,7 +277,7 @@
         };
         const track = [
           node(0, App.icon('calendar'), 'Event details', 'wz-end'),
-          ...rows.map((x, i) => node(i + 1, step > i + 1 && x.include && !needsWork(x) ? App.icon('check') : String(i + 1), x.title || `Activity ${i + 1}`, [!x.include ? 'off' : '', needsWork(x) ? 'warn' : ''].filter(Boolean).join(' '))),
+          ...rows.map((x, i) => node(i + 1, step > i + 1 && x.include && !needsWork(x) && !badTotal(x) ? App.icon('check') : String(i + 1), x.title || `Activity ${i + 1}`, [!x.include ? 'off' : '', needsWork(x) || badTotal(x) ? 'warn' : ''].filter(Boolean).join(' '))),
           node(last, App.icon('list'), 'Review & create', 'wz-end'),
         ].join('');
         const title = step === 0
@@ -456,7 +458,7 @@
         const owner = owners.find((o) => String(o.id) === String(state.event.owner_id));
         const missingCriteria = picked.filter((r) => needsWork(r));
         const noJudges = picked.filter((r) => r.format === 'score' && !judgesOf(r).length);
-        const odd = picked.filter((r) => r.criteria.length && Math.abs(totalOf(r) - 100) >= 0.01);
+        const odd = picked.filter(badTotal);
         const names = (list) => list.filter((p) => p.name.trim());
         return `
           <section class="es-section" style="margin-top:0">
@@ -469,7 +471,7 @@
             </dl>
           </section>
           ${missingCriteria.length ? `<div class="alert alert-warn">${App.icon('alert')}<span><strong>${missingCriteria.length}</strong> score-based activit${missingCriteria.length === 1 ? 'y has' : 'ies have'} no criteria: ${missingCriteria.map((r) => `<a href="#" data-go="${rows.indexOf(r) + 1}">${esc(r.title)}</a>`).join(', ')}. You can still add them later.</span></div>` : ''}
-          ${odd.length ? `<div class="alert alert-info" style="margin-top:8px">${App.icon('list')}<span>Criteria not adding up to 100: ${odd.map((r) => `<a href="#" data-go="${rows.indexOf(r) + 1}">${esc(r.title)}</a> (${App.num(totalOf(r))})`).join(', ')}</span></div>` : ''}
+          ${odd.length ? `<div class="alert alert-warn" style="margin-top:8px">${App.icon('alert')}<span>Criteria must total exactly 100. Fix these before creating: ${odd.map((r) => `<a href="#" data-go="${rows.indexOf(r) + 1}">${esc(r.title)}</a> (${App.num(totalOf(r))})`).join(', ')}</span></div>` : ''}
           ${noJudges.length ? `<div class="alert alert-info" style="margin-top:8px">${App.icon('key')}<span>No judges yet for: ${noJudges.map((r) => `<a href="#" data-go="${rows.indexOf(r) + 1}">${esc(r.title)}</a>`).join(', ')}. Add them now or later in Access codes.</span></div>` : ''}
           <section class="es-section">
             <div class="es-section-head"><h3>Activities <span class="muted small">(${picked.length} of ${rows.length})</span></h3><button type="button" class="btn btn-sm" data-add-activity>${App.icon('plus')} Add activity</button></div>
@@ -523,6 +525,7 @@
           if (r.criteria.some((c) => (String(c.name).trim() && !(Number(c.max_score) > 0)) || (!String(c.name).trim() && Number(c.max_score) > 0))) {
             return App.toast('Every criterion needs a name and points.', 'error'), false;
           }
+          if (badTotal(r)) return App.toast(Criteria.totalProblem(totalOf(r)), 'error', 6000), false;
         }
         return true;
       };
@@ -542,7 +545,7 @@
           const total = root.querySelector('[data-total]');
           if (total) {
             total.textContent = `Total ${App.num(totalOf(r))}`;
-            total.classList.toggle('ok', Math.abs(totalOf(r) - 100) < 0.01);
+            total.classList.toggle('ok', Criteria.totalOk(totalOf(r)));
           }
         } else if (t.dataset.d && r) {
           r.details[t.dataset.d] = t.value;
@@ -648,6 +651,9 @@
         const bad = r.criteria.find((c) => (String(c.name).trim() && !(Number(c.max_score) > 0)) || (!String(c.name).trim() && Number(c.max_score) > 0));
         if (bad) {
           return App.toast(`Check the criteria of “${r.title}”: every criterion needs a name and points.`, 'error', 6000);
+        }
+        if (r.format === 'score' && cleanCriteria(r).length && !Criteria.totalOk(cleanCriteria(r).reduce((s, c) => s + c.max_score, 0))) {
+          return App.toast(`“${r.title}”: ${Criteria.totalProblem(cleanCriteria(r).reduce((s, c) => s + c.max_score, 0))}`, 'error', 6000);
         }
       }
       const newRows = picked.filter((r) => !r.duplicate);

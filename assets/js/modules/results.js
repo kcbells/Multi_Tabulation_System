@@ -100,21 +100,56 @@
     return App.modal({ title: 'Score sheet — ' + judge.name, body, wide: true, submitText: null, cancelText: 'Close' });
   };
 
-  /** Overall team standings with podium and activity winners. */
+  /** Ranking of the individual participants of a solo activity (no team entries). */
+  const soloStandings = (a) => {
+    const ranked = a.ranking.filter((p) => p.rank);
+    return `
+      <div class="card solo-standings">
+        <div class="card-head">
+          <div><h3>${esc(a.title)} — Individual standings</h3><div class="muted small">Solo entries · ties share the same rank</div></div>
+          ${a.status === 'closed' ? App.badge('closed', 'Final') : App.badge('pending', 'Unofficial — not final')}
+        </div>
+        ${ranked.length ? `<div class="card-body">${Charts.podium(ranked.map((p) => ({ rank: p.rank, name: p.name, value: p.display, color: p.color, photo: p.photo })))}</div>` : ''}
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Rank</th><th class="num">No.</th><th>Participant</th><th class="num">Result</th></tr></thead>
+            <tbody>${a.ranking.map((p) => `<tr class="${p.rank && p.rank <= 3 ? 'rank-' + p.rank : ''}">
+              <td>${rankPill(p.rank)}</td>
+              <td class="num">${p.number ?? ''}</td>
+              <td class="name-col">${App.entry(p)}</td>
+              <td class="num"><strong>${esc(p.display || '—')}</strong></td></tr>`).join('')}</tbody>
+          </table>
+        </div>
+      </div>`;
+  };
+
+  /**
+   * Event standings: team standings for activities entered by teams, and an individual
+   * ranking for each solo activity (entries that belong to no team).
+   */
   Results.overall = (r) => {
+    const solo = r.activities.filter((a) => a.solo);
+    if (!r.standings.length) {
+      return solo.length
+        ? solo.map(soloStandings).join('')
+        : App.empty('No results yet', 'Add contestants to the activities. Teams are only needed when contestants represent colleges or departments.', 'trophy');
+    }
+    return solo.map(soloStandings).join('') + teamStandings(r);
+  };
+
+  function teamStandings(r) {
     const s = r.standings;
-    if (!s.length) return App.empty('No teams yet', 'Add teams to this event to compute overall standings.', 'trophy');
-    const counted = r.activities.filter((a) => a.included);
+    const counted = r.activities.filter((a) => a.included && !a.solo);
     const anyPoints = s.some((t) => t.total > 0);
     const medal = (t) => t.total > 0 && t.rank <= 3; // teams without points never get a trophy
     const top = anyPoints ? s.filter(medal).slice(0, 3) : [];
-    const unlinked = r.activities.filter((a) => a.included && a.unlinked > 0);
-    const finished = r.activities.filter((a) => a.included && a.scored).length;
+    const unlinked = counted.filter((a) => a.unlinked > 0);
+    const finished = counted.filter((a) => a.scored).length;
 
     return `
       <div class="standings-note">
         ${App.icon('trophy')}
-        <span>${finished ? `Points from <strong>${finished}</strong> of ${r.activities.filter((a) => a.included).length} counted activit${r.activities.length === 1 ? 'y' : 'ies'} with results. Standings update automatically as activities finish.` : 'No results yet. Standings fill in automatically as soon as activities have winners.'}</span>
+        <span>${finished ? `Points from <strong>${finished}</strong> of ${counted.length} counted activit${counted.length === 1 ? 'y' : 'ies'} with results. Standings update automatically as activities finish.` : 'No results yet. Standings fill in automatically as soon as activities have winners.'}</span>
       </div>
       ${unlinked.map((a) => `<div class="alert alert-warn" style="margin-bottom:12px"><strong>${esc(a.title)}</strong>: ${a.unlinked} ranked entr${a.unlinked === 1 ? 'y is' : 'ies are'} not linked to a team, so ${a.unlinked === 1 ? 'it earns' : 'they earn'} no points. Open the activity's Contestants tab and choose each entry's team.</div>`).join('')}
       ${top.length ? `<div class="podium">${top.map((t, i) => `
@@ -154,7 +189,7 @@
           <table class="table stackable">
             <thead><tr><th>Activity</th><th>Status</th><th>1st</th><th>2nd</th><th>3rd</th></tr></thead>
             <tbody>
-              ${r.activities.map((a) => {
+              ${r.activities.filter((a) => !a.solo).map((a) => {
                 const place = (n) => a.winners.filter((w) => w.rank === n).map((w) => `<div>${App.entry(w, w.team && w.team !== w.name ? w.team : '', 'xs')}</div>`).join('') || '<span class="muted">—</span>';
                 return `<tr>
                   <td class="primary" data-label="Activity">${esc(a.title)}${a.counts_to_overall ? '' : ' <span class="badge no-dot">Not counted</span>'}</td>
@@ -166,5 +201,5 @@
           </table>
         </div>
       </div>`;
-  };
+  }
 })();

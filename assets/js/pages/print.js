@@ -48,9 +48,11 @@
         ${signatures([...judges.map((j) => j.name), 'Tabulator', 'Facilitator', 'Program Head'])}`;
     } else if (type === 'overall') {
       const { result: r } = await App.get('results.overall', { id, final_only: App.param('final_only') === '1' ? 1 : 0 });
-      document.title = r.event.title + ' — Overall Standings';
+      // an event without teams (solo entries only) prints its participants' ranking
+      const title = r.standings.length ? 'Overall Standings' : 'Official Standings';
+      document.title = r.event.title + ' — ' + title;
       view.innerHTML = `
-        ${head('Overall Standings', `${esc(r.event.title)}${r.event.start_date ? ' · ' + esc(App.dateRange(r.event.start_date, r.event.end_date)) : ''} · Generated ${esc(App.fmtDateTime(r.generated_at))}`)}
+        ${head(title, `${esc(r.event.title)}${r.event.start_date ? ' · ' + esc(App.dateRange(r.event.start_date, r.event.end_date)) : ''} · Generated ${esc(App.fmtDateTime(r.generated_at))}`)}
         ${Results.overall(r)}
         ${signatures(['Tabulator', 'Program Head', 'Administrator'])}`;
     } else if (type === 'codes') {
@@ -63,7 +65,7 @@
         <div class="slips">
           ${data.codes.filter((c) => Number(c.is_active)).map((c) => `
             <div class="slip ${c.role}">
-              <span class="role">${c.role === 'judge' ? 'Judge' : 'Facilitator'}</span>
+              <span class="role">${esc(App.roleLabel(c.role))}</span>
               <div style="font-weight:700;margin-top:8px">${esc(c.name)}</div>
               <div class="code-value">${esc(c.display_code)}</div>
               ${c.role === 'judge' && c.activity_ids.length ? `<div class="small muted">${c.activity_ids.map((a) => esc(titles[a] || '')).join(', ')}</div>` : ''}

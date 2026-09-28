@@ -53,7 +53,8 @@ final class CompetitionController extends Controller
         return $data;
     }
 
-    private static function matchRow(array $m): array
+    /** One match as the bracket / fixtures views read it (also used by the public page and the big screen). */
+    public static function matchRow(array $m): array
     {
         return [
             'id' => (int) $m['id'], 'stage' => $m['stage'], 'round' => (int) $m['round'], 'position' => (int) $m['position'],

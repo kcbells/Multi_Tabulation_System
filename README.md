@@ -22,8 +22,9 @@ Every page updates by itself, with no refresh needed: the dashboard, event pages
 |---|---|---|
 | Administrator | username + password | Everything, including staff accounts and every event |
 | Program Head | username + password | Create and run their own events: activities, criteria, teams, access codes, results. Cannot see activity logs (recent activity) |
-| Facilitator | **access code** (no account) | Their event only: contestants, open/close scoring, judge progress, unlock submissions, live results |
+| Facilitator | **access code** (no account) | Their event only: contestants, open/close scoring, judge progress, unlock submissions, live results, and the **big screen** |
 | Judge | **access code** (no account) | Score the activities assigned to them and **submit each contestant** (Submit on every contestant; after the last one the whole sheet counts as submitted) |
+| Audience | nothing (public page) | See the **public results page** of events a staff member published |
 
 ## Setup
 
@@ -31,6 +32,13 @@ Every page updates by itself, with no refresh needed: the dashboard, event pages
 2. Serve the `Scoring` folder with Apache + PHP 8.1+ (extensions: pdo_mysql, zip, dom, mbstring, fileinfo, curl; `ftp` only for the FTP driver).
 3. Open `http://your-server/Scoring/install/setup.php`. It creates the database and tables, then asks you to create the first administrator.
 4. Sign in at `http://your-server/Scoring/` (`index.html`).
+
+## Criteria must total 100
+
+The criteria of a score-based activity must add up to **exactly 100 points** (for example 40 + 30 + 30, or 33.33 + 33.33 + 33.34).
+- The criteria editor shows how many points are missing or too many, and **Save** stays off until the total is 100.
+- The scan wizard blocks **Next** and **Create event** while an activity's criteria are off.
+- The server refuses any other total, and scoring cannot be opened for an older activity whose criteria do not total 100.
 
 ## Criteria scanning
 
@@ -133,6 +141,40 @@ The scanned file becomes the event's document, linked in the event header.
 - every rule line, such as time limits, penalties, rounds and how points are earned
 
 The criteria appear in the Criteria tab.
+## Public results page
+
+`pages/public.html` (linked from the sign-in page as **Live results & standings**) needs no sign-in.
+- An event appears there only after a staff member clicks **Publish results** on the event page (and never while it is a draft or archived). **Public: on** hides it again.
+- Visitors pick an event, then an activity, and see its standings: podium, ranks, pictures and team colours. The **Overall standings** tab shows team points.
+- **Brackets, round robins and rankings** update live, like a scoreboard.
+- **Score-based (judged) activities** show only the line-up until the activity is **closed (final)**; then the ranks and final averages appear. They count toward the public overall standings only once final.
+- Judges' names, their individual scores and criterion scores are never sent to the public page.
+- Team logos and contestant pictures of a published event are visible to anyone.
+
+## Big screen (TV / projector / LED wall)
+
+A technical operator controls what the audience screen shows, like a broadcast switcher.
+1. The event's **facilitator** (or staff) opens **Big screen** from the menu or the event page. This is the **control panel** (`pages/control.html`).
+2. **Open screen** opens `pages/display.html`: drag it to the TV and press **F** for full screen (or **Copy screen link** and open it on the computer connected to the TV, signed in with a facilitator code of the event).
+4. Every button goes on air at once. The monitor on the control panel shows exactly what the audience sees.
+
+| Scene | Shows |
+|---|---|
+| Title card | Event name, venue and date, between segments |
+| On stage | The contestant performing now on their own colour: big picture, number, name, team. Previous / Next (or ← →) moves through the line-up |
+| Standings | Leaderboard of the chosen activity. Long lists turn pages by themselves. Marked **Final results**, or **Unofficial · live** while judging is open |
+| Bracket | The bracket scaled to fit the screen, or the round robin table |
+| Overall | Team points of the event (judged activities count once final) |
+| Winners reveal | 3rd place, then 2nd, then the champion, one press at a time (Space). The screen never receives a name before it is revealed |
+| Message | A title and a line of text (intermission, next segment…) |
+| Blackout | Black screen |
+
+- **Stage backgrounds:** every contestant has their own. On the control panel, the picture button on a contestant sets the background shown behind them in **On stage**, so switching contestants switches the background too. A contestant without one gets their colour. Wide (16:9) JPG, PNG or WEBP pictures up to 8 MB work best; a dark veil keeps the name readable.
+- **Effects** play over any scene until switched off: Glitter, Stars (with shooting stars), Confetti, Spotlights (sweeping stage beams), Light orbs and Fireworks. **Confetti burst** (key **C**) fires confetti cannons from both bottom corners once, and fires by itself when the champion is revealed. A blackout hides the effects.
+- **Show scores on screen** adds the result line (average, points, time) to standings and the reveal; off shows names and places only.
+- Keys on the control panel: **1–8** scenes, **← →** contestants, **Space** reveal next, **C** confetti burst, **B** blackout.
+- The screen follows result changes by itself and keeps the last picture if the network drops for a moment (the LIVE badge turns grey).
+
 ## Archiving and deleting events
 
 - **Archive** (event page → Archive):
@@ -185,7 +227,7 @@ pages/                dashboard, event, activity, judge, score, users, account, 
 assets/css/app.css    Deep green / black / white responsive theme
 assets/js/app.js      Core: API client, session guard, shell, dialogs, tabs
 assets/js/modules/    forms, results, criteria (upload + review editor)
-assets/js/pages/      One script per page
+assets/js/pages/      One script per page (public.js: public results, control.js + display.js: big screen)
 api/index.php         JSON API front controller (?r=resource.action)
 app/
   bootstrap.php       Autoloader, .env, config, session
@@ -215,6 +257,3 @@ After upgrading the code, open `install/setup.php` once and it adds any new inde
 - Disabled accounts and access codes lose access on their next request.
 - `app/`, `config/`, `storage/`, `database/` and dotfiles such as `.env` are blocked by `.htaccess`. On Nginx or IIS, add equivalent deny rules.
 - Set `APP_DEBUG=false` in production.
-#   M u l t i _ T a b u l a t i o n _ S y s t e m  
- #   M u l t i _ T a b u l a t i o n _ S y s t e m  
- 
