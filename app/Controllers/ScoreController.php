@@ -58,13 +58,34 @@ final class ScoreController extends Controller
                 'id' => $id, 'title' => $activity['title'], 'description' => $activity['description'],
                 'venue' => $activity['venue'], 'schedule_at' => $activity['schedule_at'], 'status' => $activity['status'],
                 'has_file' => !empty($activity['criteria_file']), 'criteria_file_name' => $activity['criteria_file_name'],
+                'score_scale' => self::scale($activity),
             ],
             'criteria' => (new CriterionRepository())->forActivity($id),
             'contestants' => (new ContestantRepository())->forActivity($id),
             'scores' => $this->scores->forJudge(Auth::id(), $id),
+            'notes' => (object) $this->scores->notes(Auth::id(), $id),
             'submitted_at' => $this->scores->submittedAt(Auth::id(), $id),
             'submitted_contestants' => $this->scores->submittedContestants(Auth::id(), $id),
         ]);
+    }
+
+    /** 10 = every criterion is scored 0–10 and weighted by its points; null = scored out of its points. */
+    public static function scale(array $activity): ?float
+    {
+        $scale = (float) ($activity['score_scale'] ?? 0);
+        return $scale > 0 ? $scale : null;
+    }
+
+    /** A judge's private note on a contestant (kept while scoring is still editable for them). */
+    public function note(): never
+    {
+        $activity = $this->judgeActivity();
+        $cid = $this->request->int('contestant_id');
+        if (!in_array($cid, (new ContestantRepository())->idsForActivity((int) $activity['id']), true)) {
+            $this->fail('That contestant is not in this activity.', 404);
+        }
+        $this->scores->saveNote(Auth::id(), $cid, $this->request->string('note', 2000));
+        $this->ok(['saved_at' => date('H:i:s')]);
     }
 
     /** Autosave: accepts a batch of {contestant_id, criterion_id, score|null}. */
@@ -75,6 +96,9 @@ final class ScoreController extends Controller
         $this->ensureEditable($activity);
 
         $maxScores = (new CriterionRepository())->maxScores($id);
+        if ($scale = self::scale($activity)) {
+            $maxScores = array_map(fn() => $scale, $maxScores);
+        }
         $contestantIds = array_flip((new ContestantRepository())->idsForActivity($id));
         $done = array_flip($this->scores->submittedContestants(Auth::id(), $id));
         $rows = [];
@@ -102,7 +126,7 @@ final class ScoreController extends Controller
             $rows[] = ['contestant_id' => $cid, 'criterion_id' => $crid, 'score' => $score];
         }
         if ($rows) {
-            $this->scores->saveMany(Auth::id(), $rows);
+            $this->scores->saveMany(Auth::id(), $rows, $id);
         }
         $this->ok(['saved' => count($rows), 'saved_at' => date('H:i:s')]);
     }
@@ -158,7 +182,7 @@ final class ScoreController extends Controller
     private function ensureEditable(array $activity): void
     {
         if ($activity['status'] !== 'open') {
-            $this->fail($activity['status'] === 'closed' ? 'Scoring for this activity is closed.' : 'Scoring has not opened yet.', 423);
+            $this->fail($activity['status'] === 'closed' ? 'This activity is final — scores can no longer be changed.' : 'This activity is not live yet.', 423);
         }
         if ($this->scores->submittedAt(Auth::id(), (int) $activity['id'])) {
             $this->fail('You already submitted your scores. Ask the facilitator to unlock them if you need changes.', 423);
@@ -174,10 +198,23 @@ final class ScoreController extends Controller
         if (!in_array($judgeId, $this->activities->assignedJudgeIds((int) $activity['id']), true)) {
             $this->fail('That judge is not on this activity panel.', 404);
         }
-        $this->scores->unlock($judgeId, (int) $activity['id']);
+        if (!empty($activity['certified_at'])) {
+            $this->fail('These results are certified. Remove the certification before unlocking a judge.', 423);
+        }
+        $this->scores->unlock($judgeId, (int) $activity['id'], Auth::user()['name'] ?? null);
         $judge = (new \App\Repositories\AccessCodeRepository())->find($judgeId);
-        Log::record('score.unlocked', 'Unlocked the submission of ' . Log::q($judge['name'] ?? 'a judge') . ' for ' . Log::q($activity['title']), (int) $activity['event_id'], (int) $activity['id']);
-        $this->ok([], 'Submission unlocked — the judge can edit their scores again.');
+        Log::record('score.unlocked', 'Unlocked the submission of ' . Log::q($judge['name'] ?? 'a judge') . ' for ' . Log::q($activity['title']), (int) $activity['event_id'], (int) $activity['id'], ['judge_id' => $judgeId]);
+        $this->ok([], 'Submission unlocked — the judge can edit their scores again. Every change is recorded in the score history.');
+    }
+
+    /** Score changes and unlocks of an activity (audit view). */
+    public function history(): never
+    {
+        $activity = Gate::authorizeActivity($this->request->int('activity_id'));
+        $this->ok([
+            'changes' => $this->scores->history((int) $activity['id']),
+            'unlocks' => $this->scores->unlocks((int) $activity['id']),
+        ]);
     }
 
     /** Criterion-level scores of one judge (audit view). */
@@ -193,6 +230,7 @@ final class ScoreController extends Controller
             'contestants' => (new ContestantRepository())->forActivity((int) $activity['id']),
             'scores' => $this->scores->forJudge($judgeId, (int) $activity['id']),
             'submitted_at' => $this->scores->submittedAt($judgeId, (int) $activity['id']),
+            'score_scale' => self::scale($activity),
         ]);
     }
 }

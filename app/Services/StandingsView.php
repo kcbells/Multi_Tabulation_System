@@ -37,9 +37,11 @@ final class StandingsView
                 'venue' => $activity['venue'] ?? null, 'schedule_at' => $activity['schedule_at'] ?? null,
                 'score_label' => $activity['score_label'] ?? null, 'rank_direction' => $activity['rank_direction'] ?? 'desc',
                 'third_place' => (bool) ($activity['third_place'] ?? true),
+                'certified' => !empty($activity['certified_at']),
             ],
             'visible' => $visible,
             'complete' => false,
+            'awards' => [],
             'rows' => [],
             'lineup' => [],
             'matches' => [],
@@ -55,6 +57,13 @@ final class StandingsView
         $placements = (new PlacementService())->forActivity($activity);
         $data['complete'] = (bool) $placements['complete'];
         $data['rows'] = array_map(fn($r) => self::entry($r) + ['rank' => $r['rank'], 'display' => $r['display']], $placements['rows']);
+        if ($format === 'score') {
+            // special awards: only who won — criterion averages stay private
+            $data['awards'] = array_values(array_filter(array_map(fn($a) => [
+                'name' => $a['name'],
+                'winners' => array_map(fn($w) => ['id' => $w['id'], 'number' => $w['number'], 'name' => $w['name'], 'team' => $w['team_name'], 'color' => $w['color'], 'photo' => $w['photo']], $a['winners']),
+            ], (new Tabulator())->activity($aid)['awards']), fn($a) => $a['winners']));
+        }
 
         if ($format === 'bracket' || $format === 'round_robin') {
             $matches = (new MatchRepository())->forActivity($aid);
@@ -79,6 +88,7 @@ final class StandingsView
             'name' => $r['name'],
             'team' => $r['team_name'] ?? null,
             'details' => $r['details'] ?? null,
+            'members' => $r['members'] ?? null,
             'color' => $r['color'] ?? null,
             'photo' => $r['photo'] ?? null,
             'background' => $r['background'] ?? null,
@@ -90,6 +100,7 @@ final class StandingsView
     {
         $r = (new Tabulator())->overall($eventId, false, false, true);
         return [
+            'has_overall' => $r['has_overall'],
             'placement_points' => $r['placement_points'],
             'participation_points' => $r['participation_points'],
             'standings' => array_map(fn($t) => [

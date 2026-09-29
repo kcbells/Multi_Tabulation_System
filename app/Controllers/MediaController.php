@@ -177,7 +177,8 @@ final class MediaController extends Controller
 
     private function deleteQuietly(?string $key): void
     {
-        if ($key) {
+        // finalists share their pictures with the earlier round
+        if ($key && !(new ContestantRepository())->fileInUse($key)) {
             (new DocumentIntake())->deleteQuietly($key);
         }
     }

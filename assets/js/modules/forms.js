@@ -95,7 +95,7 @@
   /** One competition vs. several activities. */
   Forms.STRUCTURES = {
     single: { label: 'One competition', icon: 'trophy', text: 'The event itself is the contest, e.g. a pageant, a battle of the bands or a quiz bee. No activities to add.' },
-    multi: { label: 'Multiple activities', icon: 'grid', text: 'The event has several activities, e.g. Foundation Week or Intramurals, each decided in its own way.' },
+    multi: { label: 'Multiple activities', icon: 'grid', text: 'Several competitions under one event, e.g. Foundation Day or IT Days: Mobile Legends, CODM, chess, a programming contest, dance — each decided its own way. Departments or tribes collect overall points.' },
   };
 
   /** Create or edit an event. owners: admin-only list of staff who can be Project Head. */
@@ -105,6 +105,12 @@
     const lockedToMulti = activityCount > 1;
     const structure = e.structure === 'single' && !lockedToMulti ? 'single' : (event ? 'multi' : (e.structure || 'multi'));
     const competition = (e.structure === 'single' && opts.activities && opts.activities[0]) || {};
+    let points = [15, 12, 10, 8, 6, 5, 4, 3, 2, 1];
+    try { if (e.placement_points) points = JSON.parse(e.placement_points); } catch (_) { /* standard points */ }
+    // a new event starts without overall standings; existing events keep theirs
+    const hasOverall = event ? Number(e.has_overall ?? 1) === 1 : false;
+    const pointsMode = event ? e.points_mode || 'list' : 'countdown';
+    const groupCount = (opts.teams || []).length;
     let getCriteriaFile = () => null;
     const me = App.user || {};
     const heads = owners.filter((o) => o.role === 'program_head');
@@ -142,15 +148,47 @@
             </div>
             ${lockedToMulti ? `<p class="hint">This event has ${activityCount} activities, so it stays “Multiple activities”.</p>` : ''}
           </div>
-          <div class="field span-2"><span class="field-label" data-format-label>How are the activities decided?</span>
+          <div class="field span-2" data-single-format><span class="field-label">How is the competition decided?</span>
             ${Forms.formatCards('default_format', e.default_format || 'score')}
-            <p class="hint" data-format-hint></p>
+            <p class="hint">Pick the one format for this competition. You set up its criteria, contestants, judges or bracket right after saving.</p>
+          </div>
+          <div class="field span-2" data-multi-info>
+            <div class="multi-explainer">
+              <strong>${App.icon('grid')} Each activity is decided its own way</strong>
+              <p>You don't choose one format for the whole event. ${event ? 'On the event page, use' : 'Right after saving, you get'} <b>Add activities</b> to list them all at once and pick how each one is decided:</p>
+              <ul>${Object.values(Forms.FORMATS).map((f) => `<li>${App.icon(f.icon)}<span><b>${f.label}</b> — ${esc(f.examples)}</span></li>`).join('')}</ul>
+            </div>
           </div>
           <div class="span-2 form-grid two" data-single-only style="margin:0">
             ${Forms.natureField(competition.nature)}
           </div>
           ${Forms.criteriaField(competition, 'data-single-score')}
           <label class="field span-2"><span>Description <em>(optional)</em></span><textarea name="description" rows="2">${esc(e.description)}</textarea></label>
+          <div class="field span-2 overall-box">
+            <label class="check overall-switch"><input type="checkbox" name="has_overall" ${hasOverall ? 'checked' : ''}>
+              <span><strong>${App.icon('trophy')} Overall standings</strong>
+                <span class="muted">Groups — departments, tribes, colleges — compete, and every placing of their players and teams earns points for them. The group with the most points wins the event.</span></span></label>
+            <div data-overall-on>
+              ${event ? `<p class="hint">${groupCount} group${groupCount === 1 ? '' : 's'} in this event — add, rename or remove them in the <strong>Groups</strong> tab of the event.</p>`
+                : `<label class="field"><span>Groups <em>(one per line — you can add more later)</em></span>
+                  <textarea name="groups_text" rows="4" placeholder="Academia&#10;Jujutsu&#10;Titans&#10;Hydra"></textarea></label>`}
+              <div class="field"><span class="field-label">Points for each placing</span>
+                <label class="check"><input type="radio" name="points_mode" value="countdown" ${pointsMode === 'countdown' ? 'checked' : ''}>
+                  <span><strong>Countdown</strong> <span class="muted">— 1st place gets as many points as there are groups, each place one less, and everyone who places gets at least 1 (8 tribes: 8, 7, 6 … 1).</span></span></label>
+                <label class="check"><input type="radio" name="points_mode" value="list" ${pointsMode === 'list' ? 'checked' : ''}>
+                  <span><strong>My own points per place</strong> <span class="muted">— e.g. 15, 12, 10, 8, 6, 5, 4, 3, 2, 1.</span></span></label>
+              </div>
+              <div class="form-grid two" data-points-list style="margin:0">
+                <label class="field"><span>Points for 1st, 2nd, 3rd… place</span>
+                  <input name="placement_points" value="${esc(points.join(', '))}" placeholder="15, 12, 10, 8, 6, 5, 4, 3, 2, 1" pattern="[0-9., /]+" required>
+                  <p class="hint">From 1st place down, separated by commas. <button type="button" class="link-btn" data-points="15, 12, 10, 8, 6, 5, 4, 3, 2, 1">Use 15 … 1 (10 places)</button> · <button type="button" class="link-btn" data-points="10, 7, 5">Use 10, 7, 5</button></p></label>
+                <label class="field"><span>Points for every place after those</span>
+                  <input type="number" name="participation_points" min="0" step="0.5" value="${esc(Number(e.participation_points ?? 1))}">
+                  <p class="hint">So even the last place earns something.</p></label>
+              </div>
+            </div>
+            <p class="hint" data-overall-off>No overall: participants don't need a group. Each activity simply ranks its solo players or teams (a team lists its members).</p>
+          </div>
         </div>`,
       onOpen: (form) => {
         if (lockedToMulti) form.querySelector('[name=structure][value=single]').disabled = true;
@@ -160,16 +198,33 @@
           const single = form.querySelector('[name=structure]:checked')?.value === 'single';
           const format = form.querySelector('[name=default_format]:checked')?.value || 'score';
           form.querySelectorAll('[name=structure]').forEach((r) => r.closest('.format-card').classList.toggle('active', r.checked));
-          form.querySelector('[data-format-label]').textContent = single ? 'How is the competition decided?' : 'How are the activities decided?';
-          form.querySelector('[data-format-hint]').textContent = single
-            ? 'Pick the one format for this competition. You set up its criteria, contestants, judges or bracket right after saving.'
-            : 'This is the event’s main format and is preselected for every new activity. Each activity can still use a different one, e.g. a bracket for basketball and ranking for the quiz bee.';
+          // several activities: no event-wide format, every activity picks its own
+          form.querySelector('[data-single-format]').hidden = !single;
+          form.querySelectorAll('[name=default_format]').forEach((r) => (r.disabled = !single));
+          form.querySelector('[data-multi-info]').hidden = single;
           singleOnly.hidden = !single;
           singleOnly.querySelectorAll('select, input').forEach((el) => { el.disabled = !single || (el.name === 'nature_other' && el.hidden); });
           criteria.hidden = !(single && format === 'score');
         };
         form.querySelectorAll('[name=structure]').forEach((r) => r.addEventListener('change', sync));
         Forms.bindFormatCards(form, 'default_format', sync);
+
+        // overall standings: groups and points only when switched on
+        const overall = form.querySelector('[name=has_overall]');
+        const syncOverall = () => {
+          const on = overall.checked;
+          const list = form.querySelector('[name=points_mode]:checked')?.value !== 'countdown';
+          form.querySelector('[data-overall-on]').hidden = !on;
+          form.querySelector('[data-overall-off]').hidden = on;
+          form.querySelector('[data-points-list]').hidden = !on || !list;
+          form.querySelectorAll('[data-overall-on] input, [data-overall-on] textarea').forEach((el) => {
+            el.disabled = !on || (el.closest('[data-points-list]') && !list);
+          });
+        };
+        overall.addEventListener('change', syncOverall);
+        form.querySelectorAll('[name=points_mode]').forEach((r) => r.addEventListener('change', syncOverall));
+        form.querySelectorAll('[data-points]').forEach((b) => b.addEventListener('click', () => (form.querySelector('[name=placement_points]').value = b.dataset.points)));
+        syncOverall();
         Forms.bindNature(form);
         getCriteriaFile = Forms.bindCriteriaField(form);
         const startAt = form.querySelector('[name=start_at]');
@@ -181,6 +236,15 @@
       },
       onSubmit: async (data, form) => {
         Forms.takeNature(data);
+        if ('groups_text' in data) {
+          data.groups = String(data.groups_text).split(/\r?\n/).map((g) => g.trim()).filter(Boolean);
+          delete data.groups_text;
+        }
+        if (data.has_overall && !event && !(data.groups || []).length && !(await App.confirm({
+          title: 'No groups yet?',
+          message: 'The overall standings need groups (departments, tribes…). You can add them later in the Groups tab — participants cannot be added until then.',
+          confirmText: 'Continue without groups',
+        }))) return false;
         const criteriaFile = data.structure === 'single' && data.default_format === 'score' ? getCriteriaFile() : null;
         const r = await App.post('events.save', { ...data, id: event ? event.id : 0 });
         App.toast(r.message, 'success');
@@ -325,10 +389,14 @@
 
   /** How an activity is decided. */
   Forms.FORMATS = {
-    score: { label: 'Score-based', icon: 'list', text: 'Judges score each contestant using the criteria. Ranked by average score.' },
-    bracket: { label: 'Bracket', icon: 'trophy', text: 'Single elimination. Winners advance round by round to the championship.' },
-    round_robin: { label: 'Round robin', icon: 'grid', text: 'Everyone plays everyone. Ranked by wins, draws and score difference.' },
-    ranking: { label: 'Ranking', icon: 'history', text: 'Enter each result — points, time or placement — and it ranks automatically.' },
+    score: { label: 'Score-based', icon: 'list', text: 'Judges score each contestant using the criteria. Ranked by average score.',
+      examples: 'judges score with criteria: singing, dancing, pageant, poster making, cosplay' },
+    bracket: { label: 'Bracket', icon: 'trophy', text: 'Single elimination. Winners advance round by round to the championship.',
+      examples: 'knock-out matches: Mobile Legends, CODM, Valorant, basketball, volleyball' },
+    round_robin: { label: 'Round robin', icon: 'grid', text: 'Everyone plays everyone. Ranked by wins, draws and score difference.',
+      examples: 'everyone plays everyone: chess, table tennis, small leagues' },
+    ranking: { label: 'Ranking', icon: 'history', text: 'Enter each result — points, time or placement — and it ranks automatically.',
+      examples: 'one result each (points or time): quiz bee, battle of the wits, IP subnetting, crimping, programming contest by problems solved' },
   };
 
   /** The four format choices as selectable cards (radio name = inputName). */
@@ -338,7 +406,7 @@
         <label class="format-card ${selected === key ? 'active' : ''}">
           <input type="radio" name="${inputName}" value="${key}" ${selected === key ? 'checked' : ''}>
           <span class="fc-icon">${App.icon(f.icon)}</span>
-          <span class="fc-body"><strong>${f.label}</strong><span>${f.text}</span></span>
+          <span class="fc-body"><strong>${f.label}</strong><span>${f.text}</span><em class="fc-examples">e.g. ${esc(f.examples.replace(/^[^:]*:\s*/, ''))}</em></span>
         </label>`).join('')}
     </div>`;
 
@@ -350,6 +418,138 @@
     };
     form.querySelectorAll(`[name="${inputName}"]`).forEach((r) => r.addEventListener('change', sync));
     sync();
+  };
+
+  /**
+   * Common competitions with the way they are usually decided. Ranking activities also say
+   * what the result is: points (highest wins) or time (fastest wins).
+   */
+  Forms.ACTIVITY_PRESETS = [
+    { group: 'Esports', items: [
+      ['Mobile Legends', 'bracket', 'Sports'], ['Call of Duty Mobile (CODM)', 'bracket', 'Sports'], ['Valorant', 'bracket', 'Sports'], ['Tekken', 'bracket', 'Sports'],
+    ] },
+    { group: 'Sports & mind games', items: [
+      ['Chess', 'round_robin', 'Sports'], ['Basketball', 'bracket', 'Sports'], ['Volleyball', 'bracket', 'Sports'], ['Table tennis', 'round_robin', 'Sports'], ['Badminton', 'bracket', 'Sports'],
+    ] },
+    { group: 'IT & academic contests', items: [
+      ['Programming contest', 'ranking', 'Technology / IT', 'points'], ['IP subnetting contest', 'ranking', 'Technology / IT', 'points'], ['Crimping contest', 'ranking', 'Technology / IT', 'time'],
+      ['Battle of the Wits', 'ranking', 'Academic', 'points'], ['Quiz bee', 'ranking', 'Academic', 'points'], ['Web design', 'score', 'Technology / IT'],
+    ] },
+    { group: 'Performing & arts', items: [
+      ['Singing contest', 'score', 'Music & Dance'], ['Dance competition', 'score', 'Music & Dance'], ['Mr. & Ms.', 'score', 'Pageant'],
+      ['Poster making', 'score', 'Arts & Literary'], ['Cosplay', 'score', 'Cultural'], ['Battle of the bands', 'score', 'Music & Dance'],
+    ] },
+  ];
+
+  /**
+   * Add several activities at once: one row each with its name and how it is decided.
+   * Resolves { created: [ids] } when at least one was added.
+   * opts: { existing: [activities], firstTime: bool }
+   */
+  Forms.addActivities = (eventId, opts = {}) => {
+    const existing = new Set((opts.existing || []).map((a) => a.title.trim().toLowerCase()));
+    const formatOptions = (sel) => Object.entries(Forms.FORMATS).map(([k, f]) => `<option value="${k}" ${sel === k ? 'selected' : ''}>${f.label}</option>`).join('');
+    const row = (title = '', format = 'score', nature = '', unit = 'points') => `
+      <div class="act-row" data-act-row>
+        <input name="act_title" maxlength="200" placeholder="Activity name, e.g. Mobile Legends" value="${esc(title)}" aria-label="Activity name">
+        <select name="act_format" aria-label="How it is decided">${formatOptions(format)}</select>
+        <select name="act_unit" aria-label="What wins" class="${format === 'ranking' ? '' : 'is-off'}">
+          <option value="points" ${unit === 'points' ? 'selected' : ''}>Highest points wins</option>
+          <option value="time" ${unit === 'time' ? 'selected' : ''}>Fastest time wins</option>
+        </select>
+        <select name="act_nature" aria-label="Nature of activity">
+          <option value="">Nature…</option>
+          ${Forms.NATURES.map((n) => `<option ${n === nature ? 'selected' : ''}>${esc(n)}</option>`).join('')}
+        </select>
+        <button type="button" class="btn btn-sm btn-ghost" data-remove-row aria-label="Remove">${App.icon('x')}</button>
+        <p class="act-row-hint muted small" data-row-hint></p>
+      </div>`;
+    return App.modal({
+      title: opts.firstTime ? 'Event created — now add its activities' : 'Add activities',
+      wide: true,
+      submitText: 'Add activities',
+      cancelText: opts.firstTime ? 'Later' : 'Cancel',
+      body: `
+        ${opts.firstTime ? `<div class="alert alert-success" style="margin-bottom:14px">${App.icon('check')} <span>The event is saved. List every competition in it below — each one can be decided a different way.</span></div>` : ''}
+        <div class="preset-box">
+          <div class="field-label">Quick add <em>(tap to add a row; you can rename it)</em></div>
+          ${Forms.ACTIVITY_PRESETS.map((g) => `<div class="preset-group"><span>${esc(g.group)}</span>
+            ${g.items.map(([t, f, n, u], i) => `<button type="button" class="chip-btn" data-preset="${esc(g.group)}|${i}" title="${esc(Forms.FORMATS[f].label)}">${App.icon(Forms.FORMATS[f].icon)} ${esc(t)}</button>`).join('')}</div>`).join('')}
+        </div>
+        <div class="act-head" aria-hidden="true"><span>Activity</span><span>How it is decided</span><span></span><span>Nature</span><span></span></div>
+        <div data-act-list>${row()}</div>
+        <button type="button" class="btn btn-sm" data-add-row style="margin-top:6px">${App.icon('plus')} Add another activity</button>
+        <p class="hint" style="margin-top:12px">Venue, schedule, criteria sheet and rounds can be set later by opening each activity. Every activity counts toward the overall standings of the departments / tribes.</p>`,
+      onOpen: (form) => {
+        const list = form.querySelector('[data-act-list]');
+        const syncRow = (r) => {
+          const f = r.querySelector('[name=act_format]').value;
+          r.querySelector('[name=act_unit]').classList.toggle('is-off', f !== 'ranking');
+          r.querySelector('[data-row-hint]').textContent = Forms.FORMATS[f].examples;
+        };
+        const add = (...args) => {
+          // fill the first empty row before adding new ones
+          const empty = App.$$('[data-act-row]', list).find((r) => !r.querySelector('[name=act_title]').value.trim());
+          if (empty && args.length) empty.remove();
+          list.insertAdjacentHTML('beforeend', row(...args));
+          syncRow(list.lastElementChild);
+          if (!args.length) list.lastElementChild.querySelector('input').focus();
+        };
+        App.$$('[data-act-row]', list).forEach(syncRow);
+        list.addEventListener('change', (e) => e.target.name === 'act_format' && syncRow(e.target.closest('[data-act-row]')));
+        list.addEventListener('click', (e) => {
+          if (!e.target.closest('[data-remove-row]')) return;
+          e.target.closest('[data-act-row]').remove();
+          if (!list.children.length) add();
+        });
+        form.querySelector('[data-add-row]').addEventListener('click', () => add());
+        form.querySelectorAll('[data-preset]').forEach((b) => b.addEventListener('click', () => {
+          const [group, i] = b.dataset.preset.split('|');
+          const [t, f, n, u] = Forms.ACTIVITY_PRESETS.find((g) => g.group === group).items[Number(i)];
+          add(t, f, n, u || 'points');
+          b.classList.add('used');
+        }));
+      },
+      onSubmit: async (d, form) => {
+        const rows = App.$$('[data-act-row]', form).map((r) => ({
+          title: r.querySelector('[name=act_title]').value.trim(),
+          format: r.querySelector('[name=act_format]').value,
+          unit: r.querySelector('[name=act_unit]').value,
+          nature: r.querySelector('[name=act_nature]').value,
+        })).filter((r) => r.title);
+        if (!rows.length) { App.toast('Type at least one activity name, or tap a quick-add chip.', 'error'); return false; }
+        const seen = new Set();
+        for (const r of rows) {
+          const key = r.title.toLowerCase();
+          if (existing.has(key) || seen.has(key)) { App.toast(`“${r.title}” is listed twice or already in this event.`, 'error'); return false; }
+          seen.add(key);
+        }
+        const created = [];
+        const btn = form.querySelector('[type=submit]');
+        for (const r of rows) {
+          btn.textContent = `Adding ${created.length + 1} of ${rows.length}…`;
+          try {
+            const res = await App.post('activities.save', {
+              event_id: eventId, title: r.title, format: r.format, nature: r.nature, counts_to_overall: true,
+              ...(r.format === 'ranking' ? (r.unit === 'time' ? { score_label: 'Seconds', rank_direction: 'asc' } : { score_label: 'Points', rank_direction: 'desc' }) : {}),
+              ...(['bracket', 'round_robin'].includes(r.format) ? { score_label: 'Points' } : {}),
+            });
+            created.push(res.id);
+            existing.add(r.title.toLowerCase());
+          } catch (err) {
+            // keep what was added; the rest stays in the form to fix and retry
+            App.$$('[data-act-row]', form).forEach((el) => {
+              if (created.length && existing.has(el.querySelector('[name=act_title]').value.trim().toLowerCase())) el.remove();
+            });
+            btn.textContent = 'Add activities';
+            App.toast(`${created.length ? created.length + ' added. ' : ''}“${r.title}” could not be added: ${err.message}`, 'error', 7000);
+            return created.length ? { created, partial: true } : false;
+          }
+        }
+        App.toast(`${created.length} activit${created.length === 1 ? 'y' : 'ies'} added. Open each one to finish its setup.`, 'success', 5000);
+        return { created };
+      },
+    });
   };
 
   Forms.activity = (eventId, activity = null, opts = {}) => {
@@ -382,6 +582,7 @@
             </select></label>
           <div class="field" data-show="bracket"><span class="field-label">Bracket</span>
             <label class="check"><input type="checkbox" name="third_place" ${Number(a.third_place ?? 1) ? 'checked' : ''}><span>Play a 3rd-place match between the semifinal losers</span></label></div>
+          ${Forms.scoringFields(a, opts)}
           <label class="field span-2"><span>Description <em>(optional)</em></span><textarea name="description" rows="2">${esc(a.description)}</textarea></label>
           <label class="field"><span>Venue</span><input name="venue" maxlength="200" value="${esc(a.venue)}"></label>
           <label class="field"><span>Schedule</span><input type="datetime-local" name="schedule_at" value="${esc(toLocalInput(a.schedule_at))}"></label>
@@ -398,6 +599,7 @@
         };
         form.querySelectorAll('[name=format]').forEach((r) => r.addEventListener('change', sync));
         sync();
+        Forms.bindScoringFields(form);
 
         // a criteria sheet picked here is scanned right after the activity is saved
         getCriteriaFile = Forms.bindCriteriaField(form);
@@ -421,6 +623,92 @@
         return r;
       },
     });
+  };
+
+  /**
+   * Score-based activities: how the judges' scores are combined, ties, the scoring scale, and rounds
+   * (a final that takes the top N of an earlier round, optionally carrying part of that score over).
+   * opts: { criteria: [...] (tie-break choice), activities: [...] (previous-round choice) }
+   */
+  Forms.scoringFields = (a, opts = {}) => {
+    const criteria = opts.criteria || [];
+    const rounds = (opts.activities || []).filter((x) => (x.format || 'score') === 'score' && Number(x.id) !== Number(a.id));
+    const method = a.scoring_method || 'average';
+    const tie = a.tie_break || 'share';
+    const source = Number(a.source_activity_id || 0);
+    return `
+      <details class="field span-2 scoring-box" data-show="score" ${source || method !== 'average' || tie !== 'share' || Number(a.drop_extremes) || Number(a.score_scale) ? 'open' : ''}>
+        <summary class="field-label">${App.icon('list')} Scoring &amp; rounds <em>(optional)</em></summary>
+        <div class="form-grid two" style="margin-top:10px">
+          <label class="field"><span>Combine the judges' scores by</span>
+            <select name="scoring_method">
+              <option value="average" ${method === 'average' ? 'selected' : ''}>Average of the judges' totals</option>
+              <option value="rank_sum" ${method === 'rank_sum' ? 'selected' : ''}>Rank sum (each judge ranks; lowest sum wins)</option>
+            </select>
+            <p class="hint" data-method-hint></p></label>
+          <label class="field"><span>Judges enter</span>
+            <select name="score_scale">
+              <option value="0" ${Number(a.score_scale) ? '' : 'selected'}>Points, up to each criterion's maximum</option>
+              <option value="10" ${Number(a.score_scale) ? 'selected' : ''}>A score from 0 to 10 per criterion (weighted)</option>
+            </select>
+            <p class="hint">With 0–10, a criterion worth 40 points turns an 8 into 32.</p></label>
+          <label class="field"><span>When two contestants tie</span>
+            <select name="tie_break">
+              <option value="share" ${tie === 'share' ? 'selected' : ''}>They share the rank</option>
+              <option value="criterion" ${tie === 'criterion' ? 'selected' : ''} ${criteria.length ? '' : 'disabled'}>Higher score in one criterion wins${criteria.length ? '' : ' (add criteria first)'}</option>
+              <option value="rank_sum" ${tie === 'rank_sum' ? 'selected' : ''} data-for="average">Lower rank sum wins</option>
+              <option value="average" ${tie === 'average' ? 'selected' : ''} data-for="rank_sum">Higher average wins</option>
+            </select></label>
+          <label class="field" data-tie-criterion><span>Tie-break criterion</span>
+            <select name="tie_criterion_id">
+              ${criteria.map((c) => `<option value="${c.id}" ${Number(a.tie_criterion_id) === Number(c.id) ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+            </select></label>
+          <div class="field span-2"><label class="check"><input type="checkbox" name="drop_extremes" ${Number(a.drop_extremes) ? 'checked' : ''}>
+            <span>Drop the highest and the lowest judge for each contestant <span class="muted">(needs 3 or more judges)</span></span></label></div>
+          <label class="field"><span>Previous round</span>
+            <select name="source_activity_id" ${rounds.length ? '' : 'disabled'}>
+              <option value="0">None — this is a first round or a single round</option>
+              ${rounds.map((r) => `<option value="${r.id}" ${source === Number(r.id) ? 'selected' : ''}>${esc(r.title)}</option>`).join('')}
+            </select>
+            <p class="hint">${rounds.length ? 'For finals: the top contestants of that round advance here, and it stops counting toward the overall standings.' : 'Add the first round (another score-based activity) to use rounds.'}</p></label>
+          <div class="form-grid two" data-round-only style="margin:0">
+            <label class="field"><span>Contestants who advance</span>
+              <input type="number" name="advance_count" min="1" max="500" value="${esc(a.advance_count || '')}" placeholder="e.g. 5"></label>
+            <label class="field"><span>Carry over from the previous round</span>
+              <div class="input-suffix"><input type="number" name="carry_weight" min="0" max="100" step="1" value="${esc(Number(a.carry_weight) ? Number(a.carry_weight) : '')}" placeholder="0"><span>%</span></div>
+              <p class="hint">e.g. 30% prelims + 70% finals. 0 = the finals start fresh.</p></label>
+          </div>
+        </div>
+      </details>`;
+  };
+
+  Forms.bindScoringFields = (form) => {
+    const method = form.querySelector('[name=scoring_method]');
+    if (!method) return;
+    const tie = form.querySelector('[name=tie_break]');
+    const tieCriterion = form.querySelector('[data-tie-criterion]');
+    const source = form.querySelector('[name=source_activity_id]');
+    const roundOnly = form.querySelector('[data-round-only]');
+    const carry = form.querySelector('[name=carry_weight]');
+    const hint = form.querySelector('[data-method-hint]');
+    const sync = () => {
+      const m = method.value;
+      hint.textContent = m === 'rank_sum'
+        ? 'Each judge’s totals become ranks (1st, 2nd…); the lowest total of ranks wins. One very harsh or generous judge cannot swing the result.'
+        : 'The usual way: the final score is the average of the judges’ totals.';
+      tie.querySelectorAll('[data-for]').forEach((o) => { o.hidden = o.dataset.for !== m; o.disabled = o.hidden; });
+      if (tie.selectedOptions[0]?.disabled) tie.value = 'share';
+      tieCriterion.hidden = tie.value !== 'criterion';
+      tieCriterion.querySelector('select').disabled = tieCriterion.hidden;
+      const round = Number(source.value) > 0;
+      roundOnly.hidden = !round;
+      roundOnly.querySelectorAll('input').forEach((i) => (i.disabled = !round));
+      // rank sum cannot carry a score over: send an empty value (0) rather than keeping the old one
+      carry.readOnly = m === 'rank_sum';
+      if (m === 'rank_sum') carry.value = '';
+    };
+    [method, tie, source].forEach((el) => el.addEventListener('change', sync));
+    sync();
   };
 
   Forms.CRITERIA_MAX_MB = 15;
@@ -689,16 +977,16 @@
   Forms.team = (eventId, team = null) => {
     let saveLook = null;
     return App.modal({
-      title: team ? 'Edit team' : 'Add team',
-      submitText: team ? 'Save' : 'Add team',
+      title: team ? 'Edit group' : 'Add group',
+      submitText: team ? 'Save' : 'Add group',
       wide: true,
       body: `
         <div class="form-grid two">
-          <label class="field span-2"><span>Team / college / department name</span>
-            <input name="name" required maxlength="150" value="${esc(team ? team.name : '')}" placeholder="e.g. College of Engineering"></label>
+          <label class="field span-2"><span>Group name <em>(department, tribe, college…)</em></span>
+            <input name="name" required maxlength="150" value="${esc(team ? team.name : '')}" placeholder="e.g. Academia, Jujutsu, Titans or College of Engineering"></label>
           ${lookFields(team, { photoLabel: 'Logo' })}
         </div>
-        <p class="hint">Teams collect placement points from every activity for the overall standings. Their entries use this colour and logo unless an entry has its own.</p>`,
+        <p class="hint">Groups collect points from every placing of their players and teams, for the overall standings. Their entries use this colour and logo unless an entry has its own.</p>`,
       onOpen: (form) => {
         saveLook = wireLook(form, team, { idField: 'team_id', uploadRoute: 'teams.logo', removeRoute: 'teams.logo_remove' });
       },
@@ -711,36 +999,61 @@
     });
   };
 
-  Forms.contestant = (activityId, teams, contestant = null) => {
+  /**
+   * A participant of an activity: a solo player, or a team with its members.
+   * opts.hasOverall: the event has overall standings, so every entry must play for a group.
+   */
+  Forms.contestant = (activityId, teams, contestant = null, opts = {}) => {
     const c = contestant || {};
-    // only the contestant's own picture can be removed here; a team logo shows through when it has none
+    const hasOverall = opts.hasOverall !== false;
+    const isTeam = !!(c.members && String(c.members).trim());
+    // only the contestant's own picture can be removed here; a group logo shows through when it has none
     const own = contestant ? { ...c, photo: c.has_photo ? c.photo : null } : null;
     let saveLook = null;
     return App.modal({
-      title: contestant ? 'Edit contestant' : 'Add contestant',
-      submitText: contestant ? 'Save' : 'Add contestant',
+      title: contestant ? 'Edit participant' : 'Add participant',
+      submitText: contestant ? 'Save' : 'Add participant',
       wide: true,
       body: `
         <div class="form-grid two">
-          <label class="field"><span>No.</span><input type="number" name="number" min="1" value="${esc(c.number || '')}" placeholder="Auto"></label>
-          <label class="field"><span>Team</span><select name="team_id">
-            <option value="">— None —</option>
-            ${teams.map((t) => `<option value="${t.id}" ${Number(c.team_id) === Number(t.id) ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
-          </select></label>
-          <label class="field span-2"><span>Contestant / entry name</span><input name="name" required maxlength="200" value="${esc(c.name)}"></label>
-          <label class="field span-2"><span>Details <em>(optional — members, piece title…)</em></span><input name="details" maxlength="255" value="${esc(c.details)}"></label>
-          ${lookFields(own, { photoLabel: 'Picture', inherited: teams.length > 0 })}
+          <div class="field span-2"><span class="field-label">Who is competing?</span>
+            <div class="segmented entry-type">
+              <label><input type="radio" name="entry_type" value="solo" ${isTeam ? '' : 'checked'}><span>${App.icon('user')} Solo player</span></label>
+              <label><input type="radio" name="entry_type" value="team" ${isTeam ? 'checked' : ''}><span>${App.icon('users')} Team</span></label>
+            </div></div>
+          ${hasOverall ? `<label class="field span-2"><span>Group <em>(department, tribe…) — earns the points of this entry</em></span>
+            <select name="team_id" required>
+              <option value="">Choose the group…</option>
+              ${teams.map((t) => `<option value="${t.id}" ${Number(c.team_id) === Number(t.id) ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
+            </select>
+            ${teams.length ? '' : '<p class="hint">This event has no groups yet. Add them on the event page (Groups tab) first.</p>'}</label>` : ''}
+          <label class="field" data-name-field><span data-name-label>${isTeam ? 'Team name' : 'Player name'}</span><input name="name" required maxlength="200" value="${esc(c.name)}"></label>
+          <label class="field"><span>No. <em>(optional)</em></span><input type="number" name="number" min="1" value="${esc(c.number || '')}" placeholder="Auto"></label>
+          <label class="field span-2" data-members ${isTeam ? '' : 'hidden'}><span>Members <em>(one per line)</em></span>
+            <textarea name="members" rows="4" placeholder="Juan Dela Cruz&#10;Maria Santos&#10;…">${esc(c.members || '')}</textarea></label>
+          <label class="field span-2"><span>Details <em>(optional — section, piece title, IGN…)</em></span><input name="details" maxlength="255" value="${esc(c.details)}"></label>
+          ${lookFields(own, { photoLabel: 'Picture', inherited: hasOverall && teams.length > 0 })}
         </div>`,
       onOpen: (form) => {
         const teamSelect = form.querySelector('[name=team_id]');
-        const teamOf = () => teams.find((t) => Number(t.id) === Number(teamSelect.value));
+        const teamOf = () => (teamSelect ? teams.find((t) => Number(t.id) === Number(teamSelect.value)) : null);
+        const syncType = () => {
+          const team = form.querySelector('[name=entry_type]:checked').value === 'team';
+          form.querySelector('[data-members]').hidden = !team;
+          form.querySelector('[data-name-label]').textContent = team ? 'Team name' : 'Player name';
+          form.querySelectorAll('.entry-type label').forEach((l) => l.classList.toggle('active', l.querySelector('input').checked));
+        };
+        form.querySelectorAll('[name=entry_type]').forEach((r) => r.addEventListener('change', syncType));
+        syncType();
         saveLook = wireLook(form, own, {
           idField: 'contestant_id', uploadRoute: 'contestants.photo', removeRoute: 'contestants.photo_remove',
           inheritedColor: () => teamOf()?.color || '',
-          onInheritChange: (redraw) => teamSelect.addEventListener('change', redraw),
+          onInheritChange: (redraw) => teamSelect && teamSelect.addEventListener('change', redraw),
         });
       },
       onSubmit: async (data) => {
+        if (data.entry_type !== 'team') data.members = '';
+        delete data.entry_type;
         const r = await App.post('contestants.save', { ...data, activity_id: activityId, id: contestant ? contestant.id : 0 });
         await saveLook(r.id);
         App.toast(r.message, 'success');
@@ -771,7 +1084,7 @@
               ${activities.length ? activities.map((a) => `
                 <label class="check" style="padding:6px 0"><input type="checkbox" name="activity_ids[]" value="${a.id}" ${assigned.has(Number(a.id)) ? 'checked' : ''}>
                   <span>${esc(a.title)}</span></label>`).join('') : '<p class="muted small">No activities yet — you can assign them later.</p>'}
-            </div>` : '<p class="hint">Facilitators can manage contestants, open/close scoring, monitor judges, view live results and run the big screen for this event. They cannot edit criteria or access codes.</p>'}
+            </div>` : '<p class="hint">Facilitators can manage contestants, take activities live and finalize them, monitor judges in Live Ops, add deductions, view live results and run the big screen for this event. They cannot edit criteria or access codes.</p>'}
           ${code ? '' : '<p class="hint">An 8-character access code is generated automatically.</p>'}
         </div>`,
       onSubmit: async (data) => {

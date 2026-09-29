@@ -110,6 +110,7 @@ final class DisplayScene
             $out['activity'] = [
                 'id' => (int) $activity['id'], 'title' => $activity['title'], 'format' => $activity['format'],
                 'status' => $activity['status'], 'nature' => $activity['nature'], 'score_label' => $activity['score_label'],
+                'certified' => !empty($activity['certified_at']),
             ];
         }
 

@@ -28,9 +28,11 @@ final class PlacementService
 
         if ($format === 'score') {
             $result = (new Tabulator())->activity($aid, $includeDrafts);
+            $rankSum = $result['method']['scoring'] === 'rank_sum';
             $rows = array_map(fn($r) => [
                 'id' => $r['id'], 'number' => $r['number'] ?? null, 'name' => $r['name'], 'team_id' => $r['team_id'], 'team_name' => $r['team_name'], 'color' => $r['color'] ?? null, 'photo' => $r['photo'] ?? null,
-                'rank' => $r['rank'], 'display' => $r['average'] === null ? '' : number_format((float) $r['average'], 2) . ' avg',
+                'rank' => $r['rank'],
+                'display' => $r['average'] === null ? '' : ($rankSum ? 'rank sum ' . rtrim(rtrim(number_format((float) $r['rank_sum'], 2, '.', ''), '0'), '.') : number_format((float) $r['average'], 2) . ' avg'),
             ], $result['rows']);
             return ['format' => $format, 'rows' => $rows, 'complete' => $activity['status'] === 'closed'];
         }

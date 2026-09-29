@@ -11,7 +11,7 @@ final class ContestantRepository extends Repository
     public function forActivity(int $activityId): array
     {
         $rows = $this->db->all(
-            'SELECT c.id, c.number, c.name, c.details, c.team_id, c.color, c.photo_file, c.stage_bg,
+            'SELECT c.id, c.number, c.name, c.details, c.members, c.team_id, c.color, c.photo_file, c.stage_bg, c.source_contestant_id,
                     t.name AS team_name, t.color AS team_color, t.logo_file AS team_logo
              FROM contestants c LEFT JOIN teams t ON t.id = c.team_id
              WHERE c.activity_id = ? ORDER BY c.number, c.name',
@@ -58,17 +58,40 @@ final class ContestantRepository extends Repository
     public function create(array $d): int
     {
         return $this->db->insert(
-            'INSERT INTO contestants (activity_id, number, name, details, team_id, color) VALUES (?, ?, ?, ?, ?, ?)',
-            [$d['activity_id'], $d['number'], $d['name'], $d['details'], $d['team_id'], $d['color'] ?? null]
+            'INSERT INTO contestants (activity_id, number, name, details, members, team_id, color) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [$d['activity_id'], $d['number'], $d['name'], $d['details'], $d['members'] ?? null, $d['team_id'], $d['color'] ?? null]
         );
     }
 
     public function update(int $id, int $activityId, array $d): void
     {
         $this->db->execute(
-            'UPDATE contestants SET number = ?, name = ?, details = ?, team_id = ?, color = ? WHERE id = ? AND activity_id = ?',
-            [$d['number'], $d['name'], $d['details'], $d['team_id'], $d['color'] ?? null, $id, $activityId]
+            'UPDATE contestants SET number = ?, name = ?, details = ?, members = ?, team_id = ?, color = ? WHERE id = ? AND activity_id = ?',
+            [$d['number'], $d['name'], $d['details'], $d['members'] ?? null, $d['team_id'], $d['color'] ?? null, $id, $activityId]
         );
+    }
+
+    /** A finalist copied from an earlier round (keeps its number, team, colour and pictures). */
+    public function copyTo(int $activityId, array $source, int $number): int
+    {
+        return $this->db->insert(
+            'INSERT INTO contestants (activity_id, number, name, details, members, team_id, color, photo_file, stage_bg, source_contestant_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            [$activityId, $number, $source['name'], $source['details'], $source['members'] ?? null, $source['team_id'], $source['color'], $source['photo_file'], $source['stage_bg'], $source['id']]
+        );
+    }
+
+    /** @return int[] ids of the earlier-round contestants already copied into this activity */
+    public function sourceIds(int $activityId): array
+    {
+        return array_map('intval', array_column($this->db->all(
+            'SELECT source_contestant_id FROM contestants WHERE activity_id = ? AND source_contestant_id IS NOT NULL', [$activityId]
+        ), 'source_contestant_id'));
+    }
+
+    /** Pictures are shared between rounds: a file is only removed when no contestant uses it any more. */
+    public function fileInUse(string $key): bool
+    {
+        return (bool) $this->db->value('SELECT 1 FROM contestants WHERE photo_file = ? OR stage_bg = ? LIMIT 1', [$key, $key]);
     }
 
     public function setPhoto(int $id, ?string $key): void

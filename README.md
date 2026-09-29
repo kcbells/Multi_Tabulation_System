@@ -12,6 +12,30 @@ Built with vanilla HTML / CSS / JavaScript (front end) and object-oriented PHP 8
 
 **Sidebar & borders:** white sidebar with black borders; cards, tables, tabs, fields and buttons use black borders too (the bracket keeps its own style). Menu clicks redraw the sidebar and top bar instantly, and a spinner only appears when a page takes a moment to load.
 
+## Getting around
+
+- **Back and "You are here":** every page below the start page begins with a **Back to …** button and the path to the page, e.g. `Events › Foundation Week › Pageant › Results`. *Back* always goes one level up (activity → its event's activities, Live Ops / Big screen → the event, event → the events list, score sheet → My activities, public activity → its event), never to wherever the browser happened to be. The last part of the path is the open tab, and every earlier part is a link. On phones the button just says *Back*.
+- **Headers keep the everyday actions visible** (Live Ops, Big screen, Publish; the status switch and Certify on an activity). Everything else — print, results book, backup, edit, scan, archive, delete — is in the **More** menu, with delete last.
+- **Tabs remember where you are:** each tab is in the address (`#results`) and the browser's **Back** button returns to the previous tab.
+- **"Setup needed"** under an activity lists what is missing (criteria, contestants, judges, bracket), each linked to the tab where it is done; the disabled *Go live* button says the same when hovered.
+- **Judges in one place:** an activity's **Judges** tab ticks who scores it and has **New judge**, which creates the judge's access code already assigned to that activity. The event's *Access codes* tab is for printing, renaming and disabling codes.
+- **Facilitators** have *Event console, Live Ops, Big screen* and *Print standings* in their menu.
+
+## Live Ops (event day)
+
+`pages/ops.html` — **Live Ops** on the event header, the sidebar, or the facilitator menu. One screen for running the day:
+- counters: live, not started, final, certified, judges still scoring, warnings
+- every activity with its progress (judges submitted, matches played or results entered) and the unofficial leader
+- a chip per judge (submitted / scored so far / not started, warnings in maroon); tap a submitted judge of a live activity to **unlock** them
+- **Go live / Finalize** and **On screen** (puts the activity's standings or bracket on the big screen) on every row
+- updates by itself
+
+## Results book, backup and offline judging
+
+- **More → Print results book:** overall standings, then every activity (score tables with deductions, awards and certificate codes; placements for brackets, round robins and rankings), one activity per printed page. Print it or save it as PDF.
+- **More → Download backup (JSON):** everything in the event — activities, criteria, contestants, scores, submissions, history, deductions, awards, matches, results and the overall standings. Access codes themselves are left out. Administrators and the event's program head only.
+- **Offline app:** on https (or localhost) the site installs a small service worker (`sw.js`) that keeps the pages, styles and scripts on the device. A judge whose signal drops can still open the score sheet; scores typed offline are kept on the device and sent when the connection returns. The API is never cached.
+
 ## Live updates
 
 Every page updates by itself, with no refresh needed: the dashboard, event pages (activities, teams, access codes, standings, logs), activity pages (contestants, judges, results, bracket), staff accounts, activity logs, and the judge screens. Each page checks the server every few seconds (`sync.version`) and reloads its data only when something changed. It waits while someone is typing, has a dialog open or is arranging the bracket, and a full-screen bracket updates in place.
@@ -21,8 +45,8 @@ Every page updates by itself, with no refresh needed: the dashboard, event pages
 | Role | Signs in with | Can do |
 |---|---|---|
 | Administrator | username + password | Everything, including staff accounts and every event |
-| Program Head | username + password | Create and run their own events: activities, criteria, teams, access codes, results. Cannot see activity logs (recent activity) |
-| Facilitator | **access code** (no account) | Their event only: contestants, open/close scoring, judge progress, unlock submissions, live results, and the **big screen** |
+| Program Head | username + password | Create and run their own events: activities, criteria, teams, access codes, results, special awards, **certifying results**, backups. Cannot see activity logs (recent activity) |
+| Facilitator | **access code** (no account) | Their event only: contestants, go live / finalize, **Live Ops**, judge progress, unlock submissions, deductions, advancing finalists, live results, and the **big screen** |
 | Judge | **access code** (no account) | Score the activities assigned to them and **submit each contestant** (Submit on every contestant; after the last one the whole sheet counts as submitted) |
 | Audience | nothing (public page) | See the **public results page** of events a staff member published |
 
@@ -64,23 +88,40 @@ Every activity chooses **how it is decided**:
 | **Round robin** | Everyone plays everyone; record each game | Standings (P / W / D / L / +− / Pts) with a points chart, fixtures by round |
 | **Ranking** | One result per contestant (points, time or placement), with higher or lower set as better | Podium and leaderboard bars |
 
-Ties share a rank. Every format feeds its placements into the **overall standings** (team points bar chart and table). Bracket placements: champion 1, runner-up 2, 3rd-place match 3 and 4 (or both semifinal losers share 3), quarterfinal losers 5.
-Activity status reads **Not started / In progress / Final** for bracket, round robin and ranking activities. A final activity is locked.
+Ties share a rank unless a tie-break is set (score-based activities). Every format feeds its placements into the **overall standings** (team points bar chart and table). Bracket placements: champion 1, runner-up 2, 3rd-place match 3 and 4 (or both semifinal losers share 3), quarterfinal losers 5.
+
+Every activity, whatever its format, uses the same statuses: **Not started → Live → Final → Certified**. The buttons say **Go live**, **Finalize** and **Reopen**. A final activity is locked for judges and scorers; a certified one is locked for everyone (see *Certified results*). The event status follows its activities by itself: the first activity that goes live makes the event **Ongoing**, and it becomes **Completed** once every activity is final (it can still be changed by hand, and a cancelled event is never changed).
 
 ## Setting up an event
 
 1. **New event**: choose the **Event type**:
    - **One competition**: the event itself is the contest, for example a pageant or a battle of the bands. The system creates its single competition automatically, with the same title, venue and schedule. After saving, you go straight to its criteria, contestants, judges or bracket. Nature of Activity and an optional criteria sheet are entered in the event form. The competition cannot be deleted by itself, and no other activities can be added unless you switch the event to Multiple activities.
-   - **Multiple activities**: an event such as Foundation Week or Intramurals, with several activities.
+   - **Multiple activities**: an event such as Foundation Day, Intramurals or IT Days with several competitions — e.g. Mobile Legends and CODM (brackets), chess (round robin), a programming, crimping or IP subnetting contest (ranking by points or time), and singing or dancing (judged with criteria). Departments, tribes or colleges collect overall points. There is **no event-wide format**: each activity is decided its own way.
 
-   Then enter the event title, venue, starting and ending date/time, Project Head, status, and **how the activities are decided** (the main format: score-based, bracket, round robin or ranking). The main format is preselected for each new activity, and each activity can still use a different one. The event status (Draft, Upcoming, Ongoing, Completed, Cancelled) can be changed at any time from the event page.
-2. Right after the event is created, the **Add activity** form opens. For each activity, enter its title and **Nature of Activity**, and choose how it is decided (score-based, bracket, round robin or ranking). For score-based activities you can attach the **criteria sheet** (photo, PDF or Word) in the same form. It is scanned when you save, and the activity page then opens with the detected criteria ready to review and save.
+   Then enter the event title, venue, starting and ending date/time, Project Head and status. For **One competition** also choose how it is decided. The event status (Draft, Upcoming, Ongoing, Completed, Cancelled) follows its activities and can also be changed from the event page.
+2. Right after a multi-activity event is created, **Add activities** opens: list every competition at once, one row each with its name, **how it is decided** (Score-based, Bracket, Round robin or Ranking) and Nature of Activity. Ranking rows also ask whether the **highest points** or the **fastest time** wins. **Quick add** chips fill in common ones (Mobile Legends, CODM, chess, programming contest, crimping, quiz bee, singing, dance…) with the usual format — rename or change any of them. Names already in the event are refused. Use **Add activities** on the Activities tab to add more later, and open an activity to set its venue, schedule, criteria sheet or rounds.
 3. **Overview** shows an event setup checklist: activities → teams → criteria / brackets → access codes.
 4. **Give access codes → Generate several** creates "Judge 1…N" (or facilitators) at once, assigned to chosen activities, ready to print as slips.
 
-Overall team points use a fixed scale: 1st = 10, 2nd = 7, 3rd = 5, and 2 for every other placing.
+### Overall standings (optional)
 
-- Standings update automatically as soon as an activity has winners. Tick "Only count closed (final) activities" to count finished ones only.
+Tick **Overall standings** in the event form when groups compete for the event title — departments at Foundation Day, or tribes such as Academia, Jujutsu and Titans at IT Days. Leave it off for an open tournament where nobody plays for a group.
+
+| | With overall standings | Without |
+|---|---|---|
+| Groups | Typed in the new-event form (one per line) and managed in the **Groups** tab | None — no Groups tab |
+| Participants | Every solo player or team **must choose its group** | Just a name (a team also lists its members) |
+| Standings tab | **Overall standings**: group points from every activity | **Results**: each activity ranks its own entries |
+
+**Every placing earns points**, the champion the most:
+- **Countdown** (default for new events): 1st place gets as many points as there are groups, each place one less, and everyone who places gets at least 1. With 8 tribes: 8, 7, 6, 5, 4, 3, 2, 1.
+- **My own points per place**: e.g. `15, 12, 10, 8, 6, 5, 4, 3, 2, 1`, plus the points for every place after those (so even the last place earns something).
+
+Points of all a group's entries add up (a tribe with two chess players collects both placings). Tied ranks share the points of their place. Tied groups are ordered by number of 1st, 2nd, then 3rd places.
+
+**Participants** are a **Solo player** or a **Team**; a team lists its members, one per line. Members appear on the participants list and on the judge's score sheet.
+
+- Standings update automatically as soon as an activity has winners. Tick "Only count final activities" to count finished ones only.
 - A contestant counts for a team when it is linked to that team, or when its name is the team's name ("cite" counts for CITE). Entries named after a team are linked automatically when saved.
 - Ranked entries that belong to no team are listed in a warning above the standings.
 - Rankings use **gold, silver and bronze** for 1st, 2nd and 3rd on podiums, rank badges and table rows.
@@ -216,14 +257,54 @@ Uploads have no time limit:
 
 - A judge's total for a contestant is the sum of their criterion scores (each 0 to the criterion maximum).
 - The final score is the average of judge totals from judges who **submitted**. "Include unsubmitted scores" gives a live preview.
-- Ties share a rank (1, 1, 3).
-- Overall: each activity marked "counts toward overall" gives placement points (default 10 / 7 / 5) to the team of each placing entry. Other ranked entries earn participation points. Tied teams are ordered by number of 1st, 2nd, then 3rd places.
+- Ties share a rank (1, 1, 3) unless a tie-break is set.
+- Overall: each activity marked "counts toward overall" gives placement points (default 10 / 7 / 5, editable per event) to the team of each placing entry. Other ranked entries earn participation points. Tied teams are ordered by number of 1st, 2nd, then 3rd places.
+
+### Scoring options (score-based activities)
+
+Set in **Edit activity → Scoring & rounds**:
+
+| Option | What it does |
+|---|---|
+| **Combine by average** (default) | Final score = average of the judges' totals |
+| **Combine by rank sum** | Each judge's totals become ranks (ties share the average rank, e.g. 3.5); the lowest sum of ranks wins. One very harsh or generous judge cannot swing the result |
+| **Drop highest & lowest** | With 3 or more judges, each contestant's highest and lowest judge are left out (struck through in the table) |
+| **0–10 per criterion** | Judges enter 0–10 on every criterion and each counts for its points (8 on a 40-point criterion = 32). The criteria still total 100. Locked once judges have scored |
+| **Tie-break** | Share the rank, or break ties by the higher average in one criterion, the lower rank sum, or (for rank sum) the higher average. Broken ties are marked in the table |
+
+- **Deductions:** facilitators and staff take points off a contestant (Results tab → *Add deduction*, with a reason). They are subtracted from every judge total, shown in the table and on printouts, never on the public page.
+- **Special awards:** *Best in …* goes to the highest average in a chosen criterion (ties share it); hand-picked awards (People's Choice, Photogenic…) go to the contestant you choose. Winners appear on the results, printouts, and on the public page once final (criterion averages stay private).
+- **Judge warnings:** the Judges tab and Live Ops flag a judge who gives nearly the same total to everyone, or whose average is 15+ points below or above the rest of the panel, and show each judge's average and spread.
+
+### Rounds (prelims → finals)
+
+1. Create the finals as another score-based activity and choose **Previous round** (the prelims), how many **advance**, and how much of the previous score to **carry over** (e.g. 30%; 0 = the finals start fresh).
+2. The prelims stop counting toward the overall standings; only the last round places teams.
+3. Finalize the prelims, then press **Advance top N** on the finals. The top contestants by official (submitted) scores are copied with their number, team, colour and pictures. A tie at the cut lets everyone tied advance; pressing it again only adds who is missing.
+4. Final score = carry% × prelim score + (100 − carry)% × finals score. The table shows both.
+
+### Score history and unlocks
+
+Every change to a score that was already entered is recorded (before → after, when, which judge), and every score entered after a facilitator **unlocked** a judge is flagged *after unlock*. See the **Score changes** card on the Judges tab. Clearing all scores keeps the history.
+
+### Certified results
+
+When an activity is final, a program head or administrator can **Certify results**:
+- Scores, deductions, contestants, criteria and the status are locked; judges cannot be unlocked.
+- A **certificate code** (e.g. `3F9A-12C0-77DE`, a fingerprint of every rank and result) is printed on every result sheet, so a printed tally can be checked against the system.
+- The public page and the big screen say **Certified official results**.
+- *Remove certification* (More menu) needs a reason, which is kept in the activity log.
+
+### Judges' notes
+
+Each judge has a private **My notes** box per contestant on the score sheet (never shown to anyone else). Before submitting a contestant, the judge sees where that total places among their own scores.
 
 ## Project structure
 
 ```
 index.html            Sign-in (the only page in the root)
-pages/                dashboard, event, activity, judge, score, users, account, print
+pages/                dashboard, event, activity, ops (Live Ops), judge, score, users, account, print
+sw.js                 Offline app shell (service worker)
 assets/css/app.css    Deep green / black / white responsive theme
 assets/js/app.js      Core: API client, session guard, shell, dialogs, tabs
 assets/js/modules/    forms, results, criteria (upload + review editor)
@@ -247,8 +328,9 @@ storage/              Default upload folder and scratch files (not web-accessibl
 ## Database indexes
 
 `database/indexes.php` lists the indexes, each matched to a query in `app/Repositories`. Examples: activities by event and display order, criteria by activity and order, contestants by activity and number, judge codes by event, role and name. A covering index on scores makes tabulation read from the index only.
-`install/setup.php` applies the list through `App\Core\SchemaIndexer` to new and existing databases. The step is safe to re-run.
-After upgrading the code, open `install/setup.php` once and it adds any new indexes.
+`install/setup.php` applies the list through `App\Core\SchemaUpgrader` to new and existing databases. The step is safe to re-run.
+
+**Upgrades apply themselves:** after new code is deployed, the first request brings the database up to date (new tables from `schema.sql`, `columns.php`, `column_changes.php`, `backfills.php`, `indexes.php`) and records it in `storage/tmp/schema.<database>.version`. Bump `SchemaGuard::VERSION` in `app/Core/SchemaGuard.php` whenever one of those files changes. Opening `install/setup.php` still does the same by hand.
 
 ## Security notes
 

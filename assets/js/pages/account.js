@@ -7,6 +7,7 @@
   const u = me.user;
 
   view.innerHTML = `
+    ${App.pathBar({ back: { href: App.page('dashboard.html'), label: 'events' }, trail: [{ label: 'Events', href: App.page('dashboard.html') }, { label: 'My account' }] })}
     <div class="page-head"><div><div class="eyebrow">Account</div><h1>My account</h1></div></div>
     <div class="card"><div class="card-body">
       <div class="row" style="gap:16px">

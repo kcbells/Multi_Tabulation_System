@@ -56,6 +56,7 @@ final class CriteriaController extends Controller
     public function save(): never
     {
         $activity = Gate::authorizeActivity($this->request->int('activity_id'), true);
+        \App\Services\Certification::ensureNotCertified($activity);
         $activityId = (int) $activity['id'];
         $list = $this->request->array('criteria');
         if (!$list) {

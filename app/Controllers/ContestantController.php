@@ -6,8 +6,10 @@ namespace App\Controllers;
 use App\Core\Controller;
 use App\Core\Gate;
 use App\Repositories\ContestantRepository;
+use App\Repositories\EventRepository;
 use App\Repositories\TeamRepository;
 use App\Services\ActivityLogger as Log;
+use App\Services\Certification;
 use App\Services\EntryLook;
 
 /** Contestants per activity — manageable by staff and the event's facilitators. */
@@ -16,23 +18,35 @@ final class ContestantController extends Controller
     public function save(): never
     {
         $activity = Gate::authorizeActivity($this->request->int('activity_id'));
+        Certification::ensureNotCertified($activity);
         $activityId = (int) $activity['id'];
         $repo = new ContestantRepository();
 
-        $teamId = $this->request->int('team_id');
+        $event = (new EventRepository())->find((int) $activity['event_id']);
+        $overall = (int) ($event['has_overall'] ?? 1) === 1;
+        $teamId = $overall ? $this->request->int('team_id') : 0;
         if ($teamId > 0 && !(new TeamRepository())->belongsToEvent($teamId, (int) $activity['event_id'])) {
-            $this->fail('Choose a team from this event.');
+            $this->fail('Choose a group from this event.');
         }
-        $name = $this->request->string('name', 200, true, 'Contestant name');
-        if ($teamId === 0) {
-            // an entry named after a team is that team's entry, so it earns overall points
+        $name = $this->request->string('name', 200, true, 'Name');
+        if ($overall && $teamId === 0) {
+            // an entry named after a group is that group's entry, so it earns overall points
             $teamId = (int) ((new TeamRepository())->findByName((int) $activity['event_id'], $name)['id'] ?? 0);
         }
+        if ($overall && $teamId === 0) {
+            $this->fail('This event has overall standings: choose the group (department, tribe…) this entry plays for, so its placings earn points.');
+        }
+        // a team entry lists its players, one per line
+        $members = implode("\n", array_slice(array_values(array_filter(array_map(
+            fn($m) => mb_substr(trim((string) $m), 0, 120),
+            preg_split('/\r?\n/', $this->request->string('members', 5000))
+        ), fn($m) => $m !== '')), 0, 60));
         $data = [
             'activity_id' => $activityId,
             'number' => $this->request->int('number') ?: $repo->nextNumber($activityId),
             'name' => $name,
             'details' => $this->request->string('details', 255) ?: null,
+            'members' => $members !== '' ? $members : null,
             'team_id' => $teamId ?: null,
             'color' => $this->colorInput(),
         ];
@@ -45,7 +59,7 @@ final class ContestantController extends Controller
             $id = $repo->create($data);
             Log::record('contestant.created', 'Added contestant ' . Log::q($data['name']) . ' to ' . Log::q($activity['title']), (int) $activity['event_id'], $activityId);
         }
-        $this->ok(['id' => $id], 'Contestant saved.');
+        $this->ok(['id' => $id], $data['name'] . ' saved.');
     }
 
     private function colorInput(): ?string
@@ -60,12 +74,15 @@ final class ContestantController extends Controller
     public function delete(): never
     {
         $activity = Gate::authorizeActivity($this->request->int('activity_id'));
+        Certification::ensureNotCertified($activity);
         $repo = new ContestantRepository();
         $contestant = $repo->find($this->request->int('id'));
         $repo->delete($this->request->int('id'), (int) $activity['id']);
         if ($contestant && (int) $contestant['activity_id'] === (int) $activity['id']) {
             foreach (array_filter([$contestant['photo_file'], $contestant['stage_bg'] ?? null]) as $key) {
-                (new \App\Services\DocumentIntake())->deleteQuietly($key);
+                if (!$repo->fileInUse($key)) { // a finalist's picture is shared with the earlier round
+                    (new \App\Services\DocumentIntake())->deleteQuietly($key);
+                }
             }
         }
         Log::record('contestant.deleted', 'Removed a contestant from ' . Log::q($activity['title']), (int) $activity['event_id'], (int) $activity['id']);
@@ -76,6 +93,7 @@ final class ContestantController extends Controller
     public function addTeams(): never
     {
         $activity = Gate::authorizeActivity($this->request->int('activity_id'));
+        Certification::ensureNotCertified($activity);
         $activityId = (int) $activity['id'];
         $repo = new ContestantRepository();
         $teams = (new TeamRepository())->withoutEntry((int) $activity['event_id'], $activityId);
@@ -87,8 +105,8 @@ final class ContestantController extends Controller
             ]);
         }
         if ($teams) {
-            Log::record('contestant.created', 'Added ' . count($teams) . ' team entries to ' . Log::q($activity['title']), (int) $activity['event_id'], $activityId);
+            Log::record('contestant.created', 'Added ' . count($teams) . ' group entries to ' . Log::q($activity['title']), (int) $activity['event_id'], $activityId);
         }
-        $this->ok([], $teams ? count($teams) . ' team entries added.' : 'Every team is already entered.');
+        $this->ok([], $teams ? count($teams) . ' group entries added.' : 'Every group is already entered.');
     }
 }

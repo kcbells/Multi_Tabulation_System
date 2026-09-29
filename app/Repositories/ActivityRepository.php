@@ -31,7 +31,7 @@ final class ActivityRepository extends Repository
     public function forEvent(int $eventId): array
     {
         return $this->db->all(
-            'SELECT id, title, status, format, score_label, rank_direction, third_place, counts_to_overall FROM activities WHERE event_id = ? ORDER BY sort_order, id',
+            'SELECT id, title, status, format, score_label, rank_direction, third_place, counts_to_overall, source_activity_id, certified_at FROM activities WHERE event_id = ? ORDER BY sort_order, id',
             [$eventId]
         );
     }
@@ -40,7 +40,8 @@ final class ActivityRepository extends Repository
     {
         return $this->db->all(
             'SELECT a.id, a.title, a.description, a.venue, a.nature, a.schedule_at, a.status, a.format, a.score_label, a.rank_direction,
-                    a.third_place, a.counts_to_overall, a.sort_order, a.criteria_file_name,
+                    a.third_place, a.counts_to_overall, a.sort_order, a.criteria_file_name, a.scoring_method, a.source_activity_id, a.advance_count,
+                    a.carry_weight, a.certified_at, a.certified_by,
                     (SELECT COUNT(*) FROM matches m WHERE m.activity_id = a.id) AS matches,
                     (SELECT COUNT(*) FROM matches m WHERE m.activity_id = a.id AND m.status = \'done\') AS matches_done,
                     (SELECT COUNT(*) FROM activity_results r WHERE r.activity_id = a.id AND r.value IS NOT NULL) AS results,
@@ -77,10 +78,13 @@ final class ActivityRepository extends Repository
     public function create(array $d): int
     {
         return $this->db->insert(
-            'INSERT INTO activities (event_id, title, description, venue, nature, schedule_at, format, score_label, rank_direction, third_place, counts_to_overall, sort_order)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO activities (event_id, title, description, venue, nature, schedule_at, format, score_label, rank_direction, third_place, counts_to_overall, sort_order,
+                                     scoring_method, drop_extremes, score_scale, tie_break, tie_criterion_id, source_activity_id, advance_count, carry_weight)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [$d['event_id'], $d['title'], $d['description'], $d['venue'], $d['nature'] ?? null, $d['schedule_at'], $d['format'] ?? 'score', $d['score_label'] ?? null,
-             $d['rank_direction'] ?? 'desc', $d['third_place'] ?? 1, $d['counts_to_overall'], $d['sort_order']]
+             $d['rank_direction'] ?? 'desc', $d['third_place'] ?? 1, $d['counts_to_overall'], $d['sort_order'],
+             $d['scoring_method'] ?? 'average', $d['drop_extremes'] ?? 0, $d['score_scale'] ?? null, $d['tie_break'] ?? 'share', $d['tie_criterion_id'] ?? null,
+             $d['source_activity_id'] ?? null, $d['advance_count'] ?? null, $d['carry_weight'] ?? 0]
         );
     }
 
@@ -88,9 +92,30 @@ final class ActivityRepository extends Repository
     {
         $this->db->execute(
             'UPDATE activities SET title = ?, description = ?, venue = ?, nature = ?, schedule_at = ?, format = ?, score_label = ?, rank_direction = ?,
-                    third_place = ?, counts_to_overall = ?, sort_order = ? WHERE id = ?',
+                    third_place = ?, counts_to_overall = ?, sort_order = ?, scoring_method = ?, drop_extremes = ?, score_scale = ?,
+                    tie_break = ?, tie_criterion_id = ?, source_activity_id = ?, advance_count = ?, carry_weight = ? WHERE id = ?',
             [$d['title'], $d['description'], $d['venue'], $d['nature'], $d['schedule_at'], $d['format'], $d['score_label'], $d['rank_direction'],
-             $d['third_place'], $d['counts_to_overall'], $d['sort_order'], $id]
+             $d['third_place'], $d['counts_to_overall'], $d['sort_order'], $d['scoring_method'], $d['drop_extremes'], $d['score_scale'],
+             $d['tie_break'], $d['tie_criterion_id'], $d['source_activity_id'], $d['advance_count'], $d['carry_weight'], $id]
+        );
+    }
+
+    public function setCountsToOverall(int $id, bool $counts): void
+    {
+        $this->db->execute('UPDATE activities SET counts_to_overall = ? WHERE id = ?', [$counts ? 1 : 0, $id]);
+    }
+
+    /** Later rounds (finals) that take their contestants from this activity. */
+    public function laterRounds(int $id): array
+    {
+        return $this->db->all('SELECT id, title, status, advance_count, carry_weight FROM activities WHERE source_activity_id = ? ORDER BY sort_order, id', [$id]);
+    }
+
+    public function setCertified(int $id, ?string $by, ?string $hash): void
+    {
+        $this->db->execute(
+            'UPDATE activities SET certified_at = ' . ($hash ? 'NOW()' : 'NULL') . ', certified_by = ?, certified_hash = ? WHERE id = ?',
+            [$hash ? $by : null, $hash, $id]
         );
     }
 

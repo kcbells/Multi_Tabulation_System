@@ -18,6 +18,7 @@
 
   function render() {
     view.innerHTML = `
+      ${App.pathBar({ back: { href: App.page('dashboard.html'), label: 'events' }, trail: [{ label: 'Events', href: App.page('dashboard.html') }, { label: 'Staff accounts' }] })}
       <div class="page-head">
         <div><div class="eyebrow">Administration</div><h1>Staff accounts</h1>
           <div class="meta">Administrators and program heads sign in with a username and password. Judges and facilitators use access codes instead.</div></div>

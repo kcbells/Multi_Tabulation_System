@@ -28,7 +28,9 @@
   const photo = (e, cls = '') => (e.photo
     ? `<span class="st-photo ${cls}" style="--entry:${esc(e.color || '#C8A02C')}"><img src="${esc(App.photoUrl(e.photo))}" alt=""></span>`
     : `<span class="st-photo is-initials ${cls}" style="--entry:${esc(e.color || '#C8A02C')};background:${esc(e.color || '#00461B')};color:${App.textOn(e.color || '#00461B')}"><b>${esc(App.initials(e.name))}</b></span>`);
-  const official = (d) => (d.activity && d.activity.status === 'closed'
+  const official = (d) => (d.activity && d.activity.certified
+    ? '<span class="sc-tag final">Certified official results</span>'
+    : d.activity && d.activity.status === 'closed'
     ? '<span class="sc-tag final">Final results</span>'
     : `<span class="sc-tag live"><i></i>${d.activity && d.activity.format === 'score' ? 'Unofficial · live' : 'Live'}</span>`);
   const head = (kicker, title, extra = '') => `<div class="sc-head"><div><div class="sc-kicker">${kicker}</div><h1>${esc(title)}</h1></div>${extra}</div>`;

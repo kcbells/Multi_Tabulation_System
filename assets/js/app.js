@@ -180,10 +180,17 @@
     return App.fmtDate(a || b);
   };
 
-  const STATUS_LABEL = { open: 'Scoring open', pending: 'Pending', closed: 'Closed', draft: 'Draft', upcoming: 'Upcoming', ongoing: 'Ongoing', completed: 'Completed', cancelled: 'Cancelled' };
+  /**
+   * One wording for every activity, whatever the format: Not started → Live → Final → Certified.
+   * (Events keep their own: Draft, Upcoming, Ongoing, Completed, Cancelled.)
+   */
+  const STATUS_LABEL = { open: 'Live', pending: 'Not started', closed: 'Final', certified: 'Certified', draft: 'Draft', upcoming: 'Upcoming', ongoing: 'Ongoing', completed: 'Completed', cancelled: 'Cancelled' };
   App.badge = (status, label = null) => `<span class="badge badge-${App.esc(status)}">${App.esc(label || STATUS_LABEL[status] || status)}</span>`;
-  /** Status wording for bracket / round robin / ranking activities. */
-  App.MATCH_STATUS = { pending: 'Not started', open: 'In progress', closed: 'Final' };
+  App.MATCH_STATUS = { pending: 'Not started', open: 'Live', closed: 'Final' };
+  /** Status badge of an activity row ({ status, certified | certified_at }). */
+  App.activityBadge = (a) => (a.certified || a.certified_at ? `<span class="badge badge-certified">${App.icon('shield')} Certified</span>` : App.badge(a.status));
+  /** What the status buttons say: go live, finalize, reopen. */
+  App.STATUS_ACTION = { pending: 'Not started', open: 'Go live', closed: 'Finalize' };
   App.pts = (n) => App.num(n) + (Number(n) === 1 ? ' pt' : ' pts');
   App.roleLabel = (role) => ({ admin: 'Administrator', program_head: 'Program Head', facilitator: 'Facilitator', judge: 'Judge' }[role] || role);
 
@@ -553,27 +560,109 @@
 
   /* ------------------------------------------------------------ tabs */
 
-  /** Wires .tabs buttons (data-tab) to panels (data-panel). Remembers the tab in the URL hash. */
+  /**
+   * Wires .tabs buttons (data-tab) to panels (data-panel). Remembers the tab in the URL hash;
+   * each tab the user opens is a browser history step, so Back returns to the previous tab.
+   */
   App.tabs = (root, onChange) => {
     const buttons = App.$$('.tabs [data-tab]', root);
     const panels = App.$$('[data-panel]', root);
+    let current = null;
     const show = (name, push = true) => {
       if (!buttons.some((b) => b.dataset.tab === name && !b.hidden)) name = buttons.find((b) => !b.hidden)?.dataset.tab;
       buttons.forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
       panels.forEach((p) => (p.hidden = p.dataset.panel !== name));
-      if (push) history.replaceState(null, '', '#' + name);
+      if (push && location.hash.slice(1) !== name) history.pushState(null, '', '#' + name);
+      current = name;
       onChange && onChange(name);
+      // the path bar ends with the tab that is open: Events › Foundation Week › Pageant › Results
+      const btn = buttons.find((b) => b.dataset.tab === name);
+      App.$$('[data-trail-tab]', root).forEach((el) => {
+        const copy = btn ? btn.cloneNode(true) : null;
+        copy?.querySelectorAll('.count, svg').forEach((x) => x.remove());
+        el.firstElementChild.textContent = copy ? copy.textContent.trim() : '';
+        el.hidden = !el.textContent;
+      });
     };
     buttons.forEach((b) => b.addEventListener('click', () => show(b.dataset.tab)));
-    // Follow in-page links such as href="#codes" (only while this tab set is still on the page)
+    // Back / Forward and in-page links such as href="#codes" (only while this tab set is still on the page)
     const onHash = () => {
-      if (!root.isConnected || !buttons[0]?.isConnected) return window.removeEventListener('hashchange', onHash);
-      const name = location.hash.slice(1);
-      if (buttons.some((b) => b.dataset.tab === name)) show(name, false);
+      if (!root.isConnected || !buttons[0]?.isConnected) {
+        window.removeEventListener('hashchange', onHash);
+        window.removeEventListener('popstate', onHash);
+        return;
+      }
+      const name = location.hash.slice(1) || buttons[0]?.dataset.tab;
+      if (name !== current && buttons.some((b) => b.dataset.tab === name)) show(name, false);
     };
     window.addEventListener('hashchange', onHash);
-    show(location.hash.slice(1) || buttons[0]?.dataset.tab, false);
+    window.addEventListener('popstate', onHash);
+    const first = location.hash.slice(1) || buttons[0]?.dataset.tab;
+    show(first, false);
+    if (current && location.hash.slice(1) !== current) history.replaceState(null, '', '#' + current);
     return show;
+  };
+
+  /* ------------------------------------------------------------ where am I? */
+
+  /**
+   * The bar at the top of every inner page: a "Back to …" button that always goes to the page
+   * one level up, and the path from the start page to here. With tab: true the path ends
+   * with the open tab (kept up to date by App.tabs).
+   *   App.pathBar({ back: { href, label }, trail: [{ label, href }, …, { label }], tab: true })
+   */
+  App.pathBar = ({ back = null, trail = [], tab = false } = {}) => `
+    <nav class="pathbar" aria-label="You are here">
+      ${back ? `<a class="btn pathbar-back" href="${back.href}" title="Back to ${App.esc(back.label)}">${App.icon('chevronLeft')}<span>Back<span class="pathbar-back-to"> to ${App.esc(back.label)}</span></span></a>` : ''}
+      <ol class="trail">
+        <li class="trail-here" aria-hidden="true">You are here</li>
+        ${trail.map((t, i) => (i < trail.length - 1 || tab) && t.href
+          ? `<li><a href="${t.href}">${App.esc(t.label)}</a></li>`
+          : `<li ${tab ? '' : 'aria-current="page"'}><strong>${App.esc(t.label)}</strong></li>`).join('')}
+        ${tab ? '<li aria-current="page" data-trail-tab hidden><span class="trail-tab"></span></li>' : ''}
+      </ol>
+    </nav>`;
+
+  /* ------------------------------------------------------------ "More" menus */
+
+  /**
+   * A button that opens a small menu, for actions that are needed now and then (edit, archive, delete…).
+   * items: [{ label, icon, href?, target?, attrs?, danger? } | 'divider']
+   */
+  App.moreMenu = (items, label = 'More') => {
+    const list = items.filter(Boolean);
+    if (!list.length) return '';
+    return `
+      <div class="dropdown more-menu" data-more>
+        <button type="button" class="btn" aria-haspopup="true" aria-expanded="false" data-more-toggle>${App.icon('menu')} ${App.esc(label)}</button>
+        <div class="dropdown-menu" role="menu">
+          ${list.map((i) => (i === 'divider' ? '<div class="dropdown-divider"></div>'
+            : i.href ? `<a class="dropdown-item ${i.danger ? 'danger' : ''}" role="menuitem" href="${i.href}" ${i.target ? `target="${i.target}" rel="noopener"` : ''} ${i.attrs || ''}>${App.icon(i.icon || 'chevronRight')}<span>${App.esc(i.label)}</span></a>`
+            : `<button type="button" class="dropdown-item ${i.danger ? 'danger' : ''}" role="menuitem" ${i.attrs || ''}>${App.icon(i.icon || 'chevronRight')}<span>${App.esc(i.label)}</span></button>`)).join('')}
+        </div>
+      </div>`;
+  };
+
+  /** Opens / closes the "More" menus inside root (one open at a time; click outside or Esc closes). */
+  const closeMenus = (except) => App.$$('[data-more].active').forEach((m) => {
+    if (m === except) return;
+    m.classList.remove('active');
+    m.querySelector('[data-more-toggle]').setAttribute('aria-expanded', 'false');
+  });
+  document.addEventListener('click', () => closeMenus());
+  document.addEventListener('keydown', (e) => e.key === 'Escape' && closeMenus());
+  App.bindMenus = (root) => {
+    App.$$('[data-more]', root).forEach((m) => {
+      const btn = m.querySelector('[data-more-toggle]');
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = !m.classList.contains('active');
+        closeMenus(m);
+        m.classList.toggle('active', open);
+        btn.setAttribute('aria-expanded', String(open));
+      });
+      m.querySelector('.dropdown-menu').addEventListener('click', () => closeMenus());
+    });
   };
 
   /* ------------------------------------------------------------ session & shell */
@@ -591,9 +680,12 @@
     ],
     facilitator: [
       { href: 'event.html?id={event}', icon: 'calendar', label: 'Event console', key: 'events' },
+      { href: 'ops.html?event_id={event}', icon: 'flow', label: 'Live Ops', key: 'ops' },
       { href: 'control.html?event_id={event}', icon: 'monitor', label: 'Big screen', key: 'screen' },
+      { href: 'print.html?type=overall&id={event}', icon: 'print', label: 'Print standings', key: 'print', target: '_blank' },
     ],
   };
+
 
   /**
    * Loads the session, enforces roles and renders the app shell around #view.
@@ -644,6 +736,7 @@
     csrfToken = me.csrf;
     App.session = me;
     App.user = me.user;
+    App.registerOffline();
     if (!me.installed) {
       location.replace(App.url('install/setup.php'));
       return halt();
@@ -660,6 +753,18 @@
     if (opts.layout !== 'bare') ensureShell(me, opts);
     else if (drawn && !sameUser(drawn, me.user)) removeShell();
     return me;
+  };
+
+  /**
+   * Offline app (sw.js): pages, styles and scripts are kept on the device, so a judge whose
+   * signal drops can still open the score sheet; scores typed offline are saved on the device and
+   * sent when the connection is back (score.js). Browsers only allow this on https or localhost.
+   */
+  App.registerOffline = () => {
+    if (!('serviceWorker' in navigator) || App.offlineRegistered) return;
+    if (location.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(location.hostname)) return;
+    App.offlineRegistered = true;
+    navigator.serviceWorker.register(App.url('sw.js')).catch(() => { /* works online as before */ });
   };
 
   /** A promise that never settles: stops the page script while the browser redirects. */
@@ -746,7 +851,7 @@
           <nav class="sidebar-nav">
             <span class="nav-section-title">Menu</span>
             ${items.map((i) => `
-              <a href="${App.page(i.href)}" class="nav-item ${i.key === opts.nav ? 'active' : ''}">
+              <a href="${App.page(i.href)}" class="nav-item ${i.key === opts.nav ? 'active' : ''}" ${i.target ? `target="${i.target}"` : ''}>
                 <span class="nav-icon">${App.icon(i.icon)}</span><span class="nav-text">${App.esc(i.label)}</span>
               </a>`).join('')}
           </nav>

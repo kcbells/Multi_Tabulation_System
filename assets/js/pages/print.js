@@ -21,16 +21,32 @@
     </header>`;
 
   const signatures = (names) => `<div class="sign-grid">${names.map((n) => `<div>${esc(n)}</div>`).join('')}</div>`;
+  const statusLine = (a) => (a.certified_at ? `<strong>CERTIFIED</strong>${a.certified_by ? ' by ' + esc(a.certified_by) : ''} · ${esc(App.fmtDateTime(a.certified_at))}`
+    : a.status === 'closed' ? 'Final' : '<strong>UNOFFICIAL — not finalized</strong>');
+  /** The certificate code lets anyone check a printed sheet against the system. */
+  const certificate = (a) => (a.certificate ? `<div class="print-cert">${App.icon('shield')} Certificate code <b>${esc(a.certificate)}</b> — the results in the system match this sheet only while this code is shown on the activity page.</div>` : '');
+  const awardsBlock = (awards) => (awards && awards.length ? `<h3 style="margin-top:18px">Special awards</h3>
+    <table class="table"><tbody>${awards.map((a) => `<tr><td><strong>${esc(a.name)}</strong></td><td>${a.winners.map((w) => esc(w.name) + (w.team_name && w.team_name !== w.name ? ' <span class="muted">(' + esc(w.team_name) + ')</span>' : '')).join(' / ') || '—'}</td></tr>`).join('')}</tbody></table>` : '');
+  const deductionsBlock = (rows) => {
+    const list = rows.flatMap((r) => (r.deductions || []).map((d) => ({ ...d, name: r.name, number: r.number })));
+    return list.length ? `<h3 style="margin-top:18px">Deductions</h3>
+      <table class="table"><tbody>${list.map((d) => `<tr><td>${d.number}. ${esc(d.name)}</td><td class="num">−${num(d.points)}</td><td>${esc(d.reason)}</td></tr>`).join('')}</tbody></table>` : '';
+  };
+  /** Placements of a bracket, round robin or ranking activity (results book). */
+  const placementsTable = (s) => (!s.rows.length ? '<p class="muted small">No contestants.</p>' : `
+    <table class="table"><thead><tr><th>Rank</th><th class="num">No.</th><th>Contestant</th><th>Team</th><th class="num">Result</th></tr></thead>
+      <tbody>${s.rows.map((r) => `<tr class="${r.rank && r.rank <= 3 ? 'rank-' + r.rank : ''}"><td>${r.rank ?? '—'}</td><td class="num">${r.number ?? ''}</td><td>${esc(r.name)}</td><td>${esc(r.team && r.team !== r.name ? r.team : '')}</td><td class="num">${esc(r.display || '—')}</td></tr>`).join('')}</tbody></table>`);
 
   try {
     if (type === 'board') {
       const d = await App.get('competition.get', { id });
       const a = d.activity;
-      const ev = await App.get('events.get', { id: a.event_id });
+      const [ev, s] = await Promise.all([App.get('events.get', { id: a.event_id }), App.get('results.standings', { id })]);
       document.title = a.title + ' — Results';
       const fmt = Forms.FORMATS[a.format];
       view.innerHTML = `
-        ${head(a.title + ' — ' + fmt.label, `${esc(ev.event.title)} · ${a.status === 'closed' ? 'Final' : '<strong>UNOFFICIAL — not finalized</strong>'} · Generated ${esc(App.fmtDateTime(new Date().toISOString()))}`)}
+        ${head(a.title + ' — ' + fmt.label, `${esc(ev.event.title)} · ${statusLine(s.activity)} · Generated ${esc(App.fmtDateTime(new Date().toISOString()))}`)}
+        ${certificate(s.activity)}
         <div id="board"></div>
         ${signatures(['Tabulator', 'Facilitator', 'Program Head'])}`;
       await Competition.mount(App.$('#board', view), { activityId: id, canManage: false });
@@ -41,11 +57,38 @@
       document.title = r.activity.title + ' — Results';
       const judges = r.judges.filter((j) => r.counted_judges.includes(j.id));
       view.innerHTML = `
-        ${head(r.activity.title + ' — Official Results', `${esc(r.activity.event_title)} · ${r.activity.status === 'closed' ? 'Final' : '<strong>UNOFFICIAL — scoring not closed</strong>'}${drafts ? ' · includes unsubmitted scores' : ''} · Generated ${esc(App.fmtDateTime(r.generated_at))}`)}
+        ${head(r.activity.title + (r.activity.status === 'closed' ? ' — Official Results' : ' — Results'), `${esc(r.activity.event_title)} · ${statusLine(r.activity)}${drafts ? ' · includes unsubmitted scores' : ''} · Generated ${esc(App.fmtDateTime(r.generated_at))}`)}
+        ${certificate(r.activity)}
+        ${Results.methodNote(r)}
         ${Results.activityTable(r)}
+        ${deductionsBlock(r.rows)}
+        ${awardsBlock(r.awards)}
         <h3 style="margin-top:22px">Criteria</h3>
         <p class="small">${r.criteria.map((c) => `${esc(c.name)} (${num(c.max_score)})`).join(' · ')}</p>
         ${signatures([...judges.map((j) => j.name), 'Tabulator', 'Facilitator', 'Program Head'])}`;
+    } else if (type === 'book') {
+      // results book: overall standings, then every activity, ready to print or save as PDF
+      const [{ result: overall }, ev] = await Promise.all([App.get('results.overall', { id }), App.get('events.get', { id })]);
+      document.title = ev.event.title + ' — Results book';
+      const parts = [];
+      for (const a of ev.activities) {
+        if ((a.format || 'score') === 'score') {
+          const { result: r } = await App.get('results.activity', { id: a.id });
+          parts.push(`<section class="book-section">
+            <h2>${esc(a.title)}</h2><p class="muted small">${statusLine(r.activity)} · Score-based${r.judges.length ? ' · ' + r.judges.filter((j) => j.submitted).length + ' of ' + r.judges.length + ' judges submitted' : ''}</p>
+            ${certificate(r.activity)}${Results.methodNote(r)}${Results.activityTable(r)}${deductionsBlock(r.rows)}${awardsBlock(r.awards)}</section>`);
+        } else {
+          const s = await App.get('results.standings', { id: a.id });
+          parts.push(`<section class="book-section">
+            <h2>${esc(a.title)}</h2><p class="muted small">${statusLine(s.activity)} · ${esc(Forms.FORMATS[a.format].label)}</p>
+            ${certificate(s.activity)}${placementsTable(s)}</section>`);
+        }
+      }
+      view.innerHTML = `
+        ${head('Results Book', `${esc(overall.event.title)}${overall.event.start_date ? ' · ' + esc(App.dateRange(overall.event.start_date, overall.event.end_date)) : ''} · Generated ${esc(App.fmtDateTime(overall.generated_at))}`)}
+        <section class="book-section"><h2>${overall.standings.length ? 'Overall standings' : 'Standings'}</h2>${Results.overall(overall)}</section>
+        ${parts.join('')}
+        ${signatures(['Tabulator', 'Program Head', 'Administrator'])}`;
     } else if (type === 'overall') {
       const { result: r } = await App.get('results.overall', { id, final_only: App.param('final_only') === '1' ? 1 : 0 });
       // an event without teams (solo entries only) prints its participants' ranking

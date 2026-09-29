@@ -13,7 +13,21 @@ final class ResultController extends Controller
     public function activity(): never
     {
         $activity = Gate::authorizeActivity($this->request->int('id'));
-        $this->ok(['result' => (new Tabulator())->activity((int) $activity['id'], $this->request->bool('drafts'))]);
+        $result = (new Tabulator())->activity((int) $activity['id'], $this->request->bool('drafts'));
+        $result['activity']['certificate'] = \App\Services\Certification::short($result['activity']['certified_hash']);
+        unset($result['activity']['certified_hash']);
+        $this->ok(['result' => $result]);
+    }
+
+    /** Placements of any format (the results book prints brackets, round robins and rankings this way). */
+    public function standings(): never
+    {
+        $activity = Gate::authorizeActivity($this->request->int('id'));
+        $data = \App\Services\StandingsView::build($activity, false);
+        $data['activity']['certified_at'] = $activity['certified_at'] ?? null;
+        $data['activity']['certified_by'] = $activity['certified_by'] ?? null;
+        $data['activity']['certificate'] = \App\Services\Certification::short($activity['certified_hash'] ?? null);
+        $this->ok($data);
     }
 
     public function overall(): never
@@ -46,7 +60,16 @@ final class ResultController extends Controller
         foreach ($judges as $j) {
             $header[] = $j['name'];
         }
-        array_push($header, 'Average', '%');
+        $rankSum = $r['method']['scoring'] === 'rank_sum';
+        $carry = $r['method']['carry_weight'] > 0;
+        array_push($header, 'Deduction');
+        if ($carry) {
+            array_push($header, 'Previous round (' . $r['method']['carry_weight'] . '%)', 'This round');
+        }
+        if ($rankSum) {
+            $header[] = 'Rank sum';
+        }
+        array_push($header, $carry ? 'Final' : 'Average', '%', 'Note');
         fputcsv($out, $header);
         foreach ($r['rows'] as $row) {
             $line = [$row['rank'] ?? '-', $row['number'], $row['name'], $row['team_name'] ?? ''];
@@ -56,10 +79,28 @@ final class ResultController extends Controller
                 $line[] = $critAvg[$c['id']] ?? '';
             }
             foreach ($judges as $j) {
-                $line[] = $totals[$j['id']] ?? '';
+                $line[] = ($totals[$j['id']] ?? '') . (in_array($j['id'], $row['dropped'], true) ? ' (dropped)' : '');
             }
-            array_push($line, $row['average'] ?? '', $row['percentage'] ?? '');
+            $line[] = $row['deduction'] ? -$row['deduction'] : '';
+            if ($carry) {
+                array_push($line, $row['previous'] ?? '', $row['round_score'] ?? '');
+            }
+            if ($rankSum) {
+                $line[] = $row['rank_sum'] ?? '';
+            }
+            array_push($line, $row['average'] ?? '', $row['percentage'] ?? '', $row['tie_note'] ?? '');
             fputcsv($out, $line);
+        }
+        if ($r['awards']) {
+            fputcsv($out, []);
+            fputcsv($out, ['Special awards']);
+            foreach ($r['awards'] as $a) {
+                fputcsv($out, [$a['name'], implode(' / ', array_column($a['winners'], 'name'))]);
+            }
+        }
+        if (!empty($r['activity']['certified_hash'])) {
+            fputcsv($out, []);
+            fputcsv($out, ['Certified', $r['activity']['certified_at'], $r['activity']['certified_by'], \App\Services\Certification::short($r['activity']['certified_hash'])]);
         }
         fclose($out);
         exit;

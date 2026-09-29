@@ -123,8 +123,9 @@ final class EventController extends Controller
         $start = $startAt ? substr($startAt, 0, 10) : '';
         $end = $endAt ? substr($endAt, 0, 10) : '';
 
-        // Overall points are not edited in the event form: new events use the standard
-        // 10 / 7 / 5 (others 2) and existing events keep whatever they already have.
+        // Overall points: 1st, 2nd, 3rd… (standard 10 / 7 / 5) and the points for every other placing
+        // (standard 2). Fields that are not sent keep the event's current values.
+        [$placementPoints, $participationPoints] = $this->overallPoints($existing);
 
         $ownerId = $existing ? (int) $existing['owner_id'] : Auth::id();
         if (Auth::is('admin') && ($requested = $this->request->int('owner_id')) > 0 && (new UserRepository())->find($requested)) {
@@ -165,15 +166,18 @@ final class EventController extends Controller
             'status' => in_array($status, self::STATUSES, true) ? $status : 'upcoming',
             'default_format' => $format,
             'structure' => $structure,
-            'placement_points' => $existing['placement_points'] ?? json_encode([10, 7, 5]),
-            'participation_points' => $existing['participation_points'] ?? 2,
+            // overall standings: groups (departments, tribes…) collect points from every activity
+            'has_overall' => $this->request->has('has_overall') ? ($this->request->bool('has_overall') ? 1 : 0) : (int) ($existing['has_overall'] ?? 1),
+            'points_mode' => in_array($mode = $this->request->string('points_mode', 20) ?: ($existing['points_mode'] ?? 'list'), ['list', 'countdown'], true) ? $mode : 'list',
+            'placement_points' => $placementPoints,
+            'participation_points' => $participationPoints,
             'owner_id' => $ownerId ?: null,
         ];
 
         if ($id > 0) {
             $this->events->update($id, $data);
             $changes = [];
-            foreach (['title', 'venue', 'start_at', 'end_at', 'status', 'default_format', 'structure', 'owner_id'] as $field) {
+            foreach (['title', 'venue', 'start_at', 'end_at', 'status', 'default_format', 'structure', 'owner_id', 'has_overall', 'points_mode', 'placement_points', 'participation_points'] as $field) {
                 if ((string) ($existing[$field] ?? '') !== (string) ($data[$field] ?? '')) {
                     $changes[] = $field;
                 }
@@ -186,9 +190,140 @@ final class EventController extends Controller
             $id = $this->events->create($data);
             Log::record('event.created', 'Created event ' . Log::q($data['title']) . ($structure === 'single' ? ' (single competition)' : ''), $id);
         }
+        // groups typed in the event form (one per line): created once, existing names are skipped
+        $groups = 0;
+        if ($data['has_overall']) {
+            $teams = new TeamRepository();
+            foreach ($this->request->array('groups') as $groupName) {
+                $groupName = mb_substr(trim((string) $groupName), 0, 150);
+                if ($groupName !== '' && !$teams->findByName($id, $groupName)) {
+                    $teams->create($id, $groupName, null);
+                    $groups++;
+                }
+            }
+            if ($groups) {
+                Log::record('team.created', 'Added ' . $groups . ' group' . ($groups === 1 ? '' : 's') . ' for the overall standings', $id);
+            }
+        }
         $activityId = $structure === 'single' ? $this->syncCompetition($id, $data, $competition) : null;
         $this->attachScannedDocument($id, $existing);
         $this->ok(['id' => $id, 'activity_id' => $activityId], 'Event saved.');
+    }
+
+    /** @return array{0:string, 1:float} placement points as JSON ("[10,7,5]") and the points for other placings */
+    private function overallPoints(?array $existing): array
+    {
+        $points = $existing['placement_points'] ?? json_encode([10, 7, 5]);
+        if ($this->request->has('placement_points')) {
+            $raw = $this->request->get('placement_points');
+            $list = is_array($raw) ? $raw : preg_split('/[\s,\/]+/', trim((string) $raw), -1, PREG_SPLIT_NO_EMPTY);
+            $clean = [];
+            foreach ($list as $p) {
+                if (!is_numeric($p) || (float) $p < 0 || (float) $p > 1000) {
+                    $this->fail('Placement points must be numbers from 0 to 1000, e.g. 10, 7, 5.');
+                }
+                $clean[] = round((float) $p, 2) + 0;
+            }
+            if (!$clean || count($clean) > 20) {
+                $this->fail('Enter the points for 1st, 2nd, 3rd… (1 to 20 places).');
+            }
+            for ($i = 1; $i < count($clean); $i++) {
+                if ($clean[$i] > $clean[$i - 1]) {
+                    $this->fail('A lower place cannot earn more points than a higher place.');
+                }
+            }
+            $points = json_encode($clean);
+        }
+        $participation = (float) ($existing['participation_points'] ?? 2);
+        if ($this->request->has('participation_points')) {
+            $participation = (float) $this->request->float('participation_points', 0);
+            $last = json_decode($points, true);
+            if ($participation < 0 || $participation > (float) end($last)) {
+                $this->fail('Points for other placings must be between 0 and the points of the last listed place.');
+            }
+        }
+        return [$points, round($participation, 2)];
+    }
+
+    /** Live Ops: every activity of the event at a glance, for running the event day. */
+    public function ops(): never
+    {
+        $id = $this->request->int('id') ?: (int) (Auth::user()['event_id'] ?? 0);
+        Gate::authorizeEvent($id);
+        $event = $this->events->find($id);
+        $tabulator = new \App\Services\Tabulator();
+        $activities = [];
+        foreach ((new ActivityRepository())->forEventWithStats($id) as $a) {
+            $row = [
+                'id' => (int) $a['id'], 'title' => $a['title'], 'format' => $a['format'], 'status' => $a['status'],
+                'schedule_at' => $a['schedule_at'], 'venue' => $a['venue'],
+                'certified' => !empty($a['certified_at']), 'source_activity_id' => $a['source_activity_id'] ? (int) $a['source_activity_id'] : null,
+                'contestants' => (int) $a['contestants'], 'criteria' => (int) $a['criteria'],
+                'matches' => (int) $a['matches'], 'matches_done' => (int) $a['matches_done'], 'results' => (int) $a['results'],
+                'judges' => [], 'leader' => null, 'alerts' => [],
+            ];
+            if ($a['format'] === 'score') {
+                $r = $tabulator->activity((int) $a['id'], true);
+                $row['judges'] = array_map(fn($j) => [
+                    'id' => $j['id'], 'name' => $j['name'], 'is_active' => $j['is_active'], 'scored' => $j['scored'], 'expected' => $j['expected'],
+                    'submitted' => $j['submitted'], 'flags' => $j['flags'],
+                ], $r['judges']);
+                $lead = array_values(array_filter($r['rows'], fn($x) => $x['rank'] === 1));
+                $row['leader'] = $lead ? implode(' / ', array_column($lead, 'name')) : null;
+                if ($a['status'] === 'open' && !$row['judges']) {
+                    $row['alerts'][] = 'No judges assigned';
+                }
+                foreach ($r['judges'] as $j) {
+                    foreach ($j['flags'] as $flag) {
+                        $row['alerts'][] = $j['name'] . ': ' . ['flat' => 'gives nearly the same total to everyone', 'harsh' => 'scores far below the panel', 'generous' => 'scores far above the panel'][$flag];
+                    }
+                }
+            }
+            $activities[] = $row;
+        }
+        $this->ok([
+            'event' => ['id' => $id, 'title' => $event['title'], 'status' => $event['status'], 'is_public' => (bool) $event['is_public'], 'archived' => !empty($event['archived_at'])],
+            'activities' => $activities,
+            'can_configure' => Gate::canConfigureEvent($id),
+            'generated_at' => date('Y-m-d H:i:s'),
+        ]);
+    }
+
+    /** Full backup of an event as JSON (everything except the access codes themselves). */
+    public function export(): never
+    {
+        $id = $this->request->int('id');
+        Gate::authorizeEvent($id, true);
+        $db = $this->db();
+        $event = $this->events->find($id);
+        unset($event['program_text']);
+        $in = 'SELECT id FROM activities WHERE event_id = ?';
+        $contestantsIn = 'SELECT c.id FROM contestants c JOIN activities a ON a.id = c.activity_id WHERE a.event_id = ?';
+        $data = [
+            'format' => 'coc-tabulation-event-backup', 'version' => 1, 'exported_at' => date('c'),
+            'event' => $event,
+            'teams' => $db->all('SELECT id, name, color FROM teams WHERE event_id = ?', [$id]),
+            'activities' => $db->all('SELECT * FROM activities WHERE event_id = ?', [$id]),
+            'criteria' => $db->all("SELECT * FROM criteria WHERE activity_id IN ($in)", [$id]),
+            'contestants' => $db->all("SELECT id, activity_id, team_id, number, name, details, color, source_contestant_id FROM contestants WHERE activity_id IN ($in)", [$id]),
+            'judges' => $db->all("SELECT id, role, name, is_active FROM access_codes WHERE event_id = ?", [$id]),
+            'judge_activities' => $db->all("SELECT * FROM judge_activities WHERE activity_id IN ($in)", [$id]),
+            'scores' => $db->all("SELECT judge_id, contestant_id, criterion_id, score, updated_at FROM scores WHERE contestant_id IN ($contestantsIn)", [$id]),
+            'judge_submissions' => $db->all("SELECT * FROM judge_submissions WHERE activity_id IN ($in)", [$id]),
+            'contestant_submissions' => $db->all("SELECT * FROM contestant_submissions WHERE contestant_id IN ($contestantsIn)", [$id]),
+            'score_history' => $db->all("SELECT * FROM score_history WHERE activity_id IN ($in)", [$id]),
+            'deductions' => $db->all("SELECT * FROM deductions WHERE activity_id IN ($in)", [$id]),
+            'awards' => $db->all("SELECT * FROM awards WHERE activity_id IN ($in)", [$id]),
+            'matches' => $db->all("SELECT * FROM matches WHERE activity_id IN ($in)", [$id]),
+            'activity_results' => $db->all("SELECT * FROM activity_results WHERE activity_id IN ($in)", [$id]),
+            'overall' => (new \App\Services\Tabulator())->overall($id),
+        ];
+        Log::record('event.exported', 'Downloaded a backup of the event', $id);
+        $name = preg_replace('/[^A-Za-z0-9_-]+/', '_', (string) $event['title']) . '_backup_' . date('Ymd_His') . '.json';
+        header('Content-Type: application/json; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $name . '"');
+        echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+        exit;
     }
 
     /* ------------------------------------------------------------------ scanned event documents */

@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS events (
     archived_at          DATETIME NULL,
     archived_by          INT UNSIGNED NULL,
     is_public            TINYINT(1) NOT NULL DEFAULT 0,
+    has_overall          TINYINT(1) NOT NULL DEFAULT 1,
+    points_mode          VARCHAR(20) NOT NULL DEFAULT 'list',
     placement_points     VARCHAR(255) NOT NULL DEFAULT '[10,7,5]',
     participation_points DECIMAL(6,2) NOT NULL DEFAULT 2,
     owner_id             INT UNSIGNED NULL,
@@ -63,6 +65,17 @@ CREATE TABLE IF NOT EXISTS activities (
     rank_direction     ENUM('desc','asc') NOT NULL DEFAULT 'desc',
     third_place        TINYINT(1) NOT NULL DEFAULT 1,
     counts_to_overall  TINYINT(1) NOT NULL DEFAULT 1,
+    scoring_method     VARCHAR(20) NOT NULL DEFAULT 'average',
+    drop_extremes      TINYINT(1) NOT NULL DEFAULT 0,
+    score_scale        DECIMAL(6,2) NULL,
+    tie_break          VARCHAR(20) NOT NULL DEFAULT 'share',
+    tie_criterion_id   INT UNSIGNED NULL,
+    source_activity_id INT UNSIGNED NULL,
+    advance_count      INT UNSIGNED NULL,
+    carry_weight       DECIMAL(5,2) NOT NULL DEFAULT 0,
+    certified_at       DATETIME NULL,
+    certified_by       VARCHAR(150) NULL,
+    certified_hash     CHAR(64) NULL,
     criteria_file      VARCHAR(255) NULL,
     criteria_file_name VARCHAR(255) NULL,
     criteria_text      MEDIUMTEXT NULL,
@@ -88,9 +101,11 @@ CREATE TABLE IF NOT EXISTS contestants (
     number      INT NOT NULL DEFAULT 0,
     name        VARCHAR(200) NOT NULL,
     details     VARCHAR(255) NULL,
+    members     TEXT NULL,
     color       VARCHAR(7) NULL,
     photo_file  VARCHAR(255) NULL,
     stage_bg    VARCHAR(255) NULL,
+    source_contestant_id INT UNSIGNED NULL,
     created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_contestants_activity FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE CASCADE,
     CONSTRAINT fk_contestants_team FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE SET NULL
@@ -213,4 +228,70 @@ CREATE TABLE IF NOT EXISTS display_state (
     version    INT UNSIGNED NOT NULL DEFAULT 1,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     CONSTRAINT fk_display_event FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Every change to a judge's score after it was first entered (audit trail for unlocks and corrections)
+CREATE TABLE IF NOT EXISTS score_history (
+    id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    activity_id   INT UNSIGNED NOT NULL,
+    judge_id      INT UNSIGNED NOT NULL,
+    contestant_id INT UNSIGNED NOT NULL,
+    criterion_id  INT UNSIGNED NOT NULL,
+    old_score     DECIMAL(7,2) NULL,
+    new_score     DECIMAL(7,2) NULL,
+    after_unlock  TINYINT(1) NOT NULL DEFAULT 0,
+    changed_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_history_activity (activity_id, changed_at),
+    CONSTRAINT fk_history_activity FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- When a facilitator unlocked a judge's submission (changes after this are flagged in the history)
+CREATE TABLE IF NOT EXISTS judge_unlocks (
+    id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    judge_id    INT UNSIGNED NOT NULL,
+    activity_id INT UNSIGNED NOT NULL,
+    unlocked_by VARCHAR(150) NULL,
+    unlocked_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_unlocks_activity (activity_id, judge_id),
+    CONSTRAINT fk_unlocks_activity FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE CASCADE,
+    CONSTRAINT fk_unlocks_judge FOREIGN KEY (judge_id) REFERENCES access_codes(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Penalties (overtime, rule violations) taken off a contestant's final score by the facilitator
+CREATE TABLE IF NOT EXISTS deductions (
+    id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    activity_id   INT UNSIGNED NOT NULL,
+    contestant_id INT UNSIGNED NOT NULL,
+    points        DECIMAL(7,2) NOT NULL,
+    reason        VARCHAR(255) NOT NULL,
+    created_by    VARCHAR(150) NULL,
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_deductions_activity (activity_id),
+    CONSTRAINT fk_deductions_activity FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE CASCADE,
+    CONSTRAINT fk_deductions_contestant FOREIGN KEY (contestant_id) REFERENCES contestants(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Special / minor awards of an activity: the best in one criterion, or a contestant picked by hand
+CREATE TABLE IF NOT EXISTS awards (
+    id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    activity_id   INT UNSIGNED NOT NULL,
+    name          VARCHAR(150) NOT NULL,
+    criterion_id  INT UNSIGNED NULL,
+    contestant_id INT UNSIGNED NULL,
+    sort_order    INT NOT NULL DEFAULT 0,
+    KEY idx_awards_activity (activity_id, sort_order),
+    CONSTRAINT fk_awards_activity FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE CASCADE,
+    CONSTRAINT fk_awards_criterion FOREIGN KEY (criterion_id) REFERENCES criteria(id) ON DELETE CASCADE,
+    CONSTRAINT fk_awards_contestant FOREIGN KEY (contestant_id) REFERENCES contestants(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- A judge's private notes on a contestant (memory aid while scoring)
+CREATE TABLE IF NOT EXISTS score_notes (
+    judge_id      INT UNSIGNED NOT NULL,
+    contestant_id INT UNSIGNED NOT NULL,
+    note          TEXT NOT NULL,
+    updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (judge_id, contestant_id),
+    CONSTRAINT fk_notes_judge FOREIGN KEY (judge_id) REFERENCES access_codes(id) ON DELETE CASCADE,
+    CONSTRAINT fk_notes_contestant FOREIGN KEY (contestant_id) REFERENCES contestants(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

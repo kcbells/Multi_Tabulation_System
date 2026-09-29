@@ -18,7 +18,7 @@ final class TeamController extends Controller
         $eventId = $this->request->int('event_id');
         Gate::authorizeEvent($eventId, true);
         $id = $this->request->int('id');
-        $name = $this->request->string('name', 150, true, 'Team name');
+        $name = $this->request->string('name', 150, true, 'Group name');
         $rawColor = $this->request->string('color', 7);
         $color = EntryLook::validColor($rawColor);
         if ($rawColor !== '' && $color === null) {
@@ -26,11 +26,11 @@ final class TeamController extends Controller
         }
 
         if ($teams->nameExists($eventId, $name, $id)) {
-            $this->fail('A team with that name already exists in this event.');
+            $this->fail('A group with that name already exists in this event.');
         }
         if ($id > 0) {
             if (!$teams->belongsToEvent($id, $eventId)) {
-                $this->fail('Team not found.', 404);
+                $this->fail('Group not found.', 404);
             }
             $teams->update($id, $name, $color);
             Log::record('team.updated', 'Updated team ' . Log::q($name), $eventId);
@@ -38,13 +38,13 @@ final class TeamController extends Controller
             $id = $teams->create($eventId, $name, $color);
             Log::record('team.created', 'Added team ' . Log::q($name), $eventId);
         }
-        $this->ok(['id' => $id], 'Team saved.');
+        $this->ok(['id' => $id], 'Group saved.');
     }
 
     public function delete(): never
     {
         $teams = new TeamRepository();
-        $team = $teams->find($this->request->int('id')) ?? $this->fail('Team not found.', 404);
+        $team = $teams->find($this->request->int('id')) ?? $this->fail('Group not found.', 404);
         Gate::authorizeEvent((int) $team['event_id'], true);
         $teams->delete((int) $team['id']);
         if ($team['logo_file']) {

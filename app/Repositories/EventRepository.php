@@ -44,10 +44,10 @@ final class EventRepository extends Repository
     public function create(array $d): int
     {
         return $this->db->insert(
-            'INSERT INTO events (title, description, venue, nature, start_at, end_at, start_date, end_date, status, default_format, structure, placement_points, participation_points, owner_id)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+            'INSERT INTO events (title, description, venue, nature, start_at, end_at, start_date, end_date, status, default_format, structure, has_overall, points_mode, placement_points, participation_points, owner_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [$d['title'], $d['description'], $d['venue'], $d['nature'], $d['start_at'], $d['end_at'], $d['start_date'], $d['end_date'], $d['status'],
-             $d['default_format'], $d['structure'] ?? 'multi', $d['placement_points'], $d['participation_points'], $d['owner_id']]
+             $d['default_format'], $d['structure'] ?? 'multi', $d['has_overall'] ?? 1, $d['points_mode'] ?? 'list', $d['placement_points'], $d['participation_points'], $d['owner_id']]
         );
     }
 
@@ -55,9 +55,9 @@ final class EventRepository extends Repository
     {
         $this->db->execute(
             'UPDATE events SET title = ?, description = ?, venue = ?, nature = ?, start_at = ?, end_at = ?, start_date = ?, end_date = ?, status = ?,
-                    default_format = ?, structure = ?, placement_points = ?, participation_points = ?, owner_id = ? WHERE id = ?',
+                    default_format = ?, structure = ?, has_overall = ?, points_mode = ?, placement_points = ?, participation_points = ?, owner_id = ? WHERE id = ?',
             [$d['title'], $d['description'], $d['venue'], $d['nature'], $d['start_at'], $d['end_at'], $d['start_date'], $d['end_date'], $d['status'],
-             $d['default_format'], $d['structure'] ?? 'multi', $d['placement_points'], $d['participation_points'], $d['owner_id'], $id]
+             $d['default_format'], $d['structure'] ?? 'multi', $d['has_overall'] ?? 1, $d['points_mode'] ?? 'list', $d['placement_points'], $d['participation_points'], $d['owner_id'], $id]
         );
     }
 

@@ -33,6 +33,7 @@ final class PublicController extends Controller
                 'nature' => $a['nature'], 'venue' => $a['venue'], 'schedule_at' => $a['schedule_at'],
                 'contestants' => (int) $a['contestants'],
                 'published' => StandingsView::isPublished($a),
+                'certified' => !empty($a['certified_at']),
                 'winners' => $winners[(int) $a['id']]['winners'] ?? [],
             ];
         }

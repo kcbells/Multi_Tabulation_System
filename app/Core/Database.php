@@ -22,6 +22,7 @@ final class Database
             PDO::ATTR_EMULATE_PREPARES   => false,
         ]);
         $this->pdo->exec("SET time_zone = '" . (new \DateTime())->format('P') . "'");
+        SchemaGuard::check($this->pdo, (string) $c['name']);
     }
 
     public static function instance(): self

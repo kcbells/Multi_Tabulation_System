@@ -16,6 +16,29 @@ final class SchemaUpgrader
 {
     public function __construct(private PDO $pdo, private string $database) {}
 
+    /** Runs database/schema.sql (CREATE TABLE IF NOT EXISTS …): creates tables that are missing. */
+    public function applySchemaFile(string $file): void
+    {
+        foreach (preg_split('/;\s*(\r?\n|$)/', (string) file_get_contents($file)) as $statement) {
+            $statement = trim((string) preg_replace('/^--.*$/m', '', $statement));
+            if ($statement !== '') {
+                $this->pdo->exec($statement);
+            }
+        }
+    }
+
+    /** The whole upgrade: tables, columns, column types, backfills and indexes. @return string[] */
+    public function upgrade(): array
+    {
+        $this->applySchemaFile(APP_ROOT . '/database/schema.sql');
+        return array_merge(
+            $this->ensureColumns(require APP_ROOT . '/database/columns.php'),
+            $this->ensureColumnTypes(require APP_ROOT . '/database/column_changes.php'),
+            $this->runBackfills(require APP_ROOT . '/database/backfills.php'),
+            $this->ensureIndexes(require APP_ROOT . '/database/indexes.php')
+        );
+    }
+
     /** @return string[] */
     public function ensureColumns(array $tables): array
     {

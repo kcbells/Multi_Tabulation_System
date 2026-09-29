@@ -32,9 +32,13 @@
     const single = event.structure === 'single';
     const isPublic = Number(event.is_public) === 1;
     const competition = single ? activities[0] : null;
+    // overall standings: groups (departments, tribes…) collect points; without it every activity just ranks its entries
+    const overallOn = Number(event.has_overall ?? 1) === 1;
 
     view.innerHTML = `
-      ${me.user.kind === 'staff' ? `<div class="crumbs"><a href="${App.page('dashboard.html')}">Events</a> / ${esc(event.title)}</div>` : ''}
+      ${me.user.kind === 'staff'
+        ? App.pathBar({ back: { href: App.page('dashboard.html' + (archived ? '?view=archived' : '')), label: archived ? 'archived events' : 'events' }, trail: [{ label: 'Events', href: App.page('dashboard.html') }, { label: event.title }], tab: true })
+        : App.pathBar({ trail: [{ label: 'Event console · ' + event.title }], tab: true })}
       ${archived ? `
       <div class="archive-banner" role="status">
         <span class="ab-icon">${App.icon('archive')}</span>
@@ -57,23 +61,30 @@
             ${event.venue ? `<span>${esc(event.venue)}</span>` : ''}
             ${event.owner_name ? `<span>${App.icon('user')} Project Head: ${esc(event.owner_name)}</span>` : ''}
             ${event.has_document ? `<a href="${App.apiUrl('events.document', { id: event.id })}" target="_blank" rel="noopener">${App.icon('file')} ${esc(event.document_name || 'Event document')}</a>` : ''}
-            ${Forms.FORMATS[event.default_format] ? `<span title="${single ? 'Single competition' : 'Main format of this event’s activities'}">${App.icon(Forms.FORMATS[event.default_format].icon)} ${single ? 'Single competition · ' : ''}${Forms.FORMATS[event.default_format].label}</span>` : ''}
+            ${single && Forms.FORMATS[event.default_format] ? `<span title="${single ? 'Single competition' : 'Main format of this event’s activities'}">${App.icon(Forms.FORMATS[event.default_format].icon)} ${single ? 'Single competition · ' : ''}${Forms.FORMATS[event.default_format].label}</span>` : ''}
           </div>
         </div>
         <div class="row">
           <label class="status-select"><span class="sr-only">Event status</span>
-            <select data-event-status aria-label="Event status" ${archived ? 'disabled' : ''}>
+            <select data-event-status aria-label="Event status" title="Follows the activities by itself: the first live activity makes it Ongoing, and it is Completed once every activity is final" ${archived ? 'disabled' : ''}>
               ${Forms.STATUSES.map((s) => `<option value="${s}" ${event.status === s ? 'selected' : ''}>${s[0].toUpperCase() + s.slice(1)}</option>`).join('')}
             </select></label>
-          <a class="btn" href="${App.page('print.html?type=overall&id=' + event.id)}" target="_blank">${App.icon('print')} Print standings</a>
-          ${archived ? '' : `<a class="btn" href="${App.page('control.html?event_id=' + event.id)}" title="Control what the TV / projector shows">${App.icon('monitor')} Big screen</a>`}
-          ${canConfigure ? `<button class="btn ${isPublic ? 'btn-primary' : ''}" data-public title="${isPublic ? 'Shown on the public results page — click to hide' : 'Show standings on the public results page (no sign-in)'}">${App.icon('globe')} ${isPublic ? 'Public: on' : 'Publish results'}</button>` : ''}
-          ${isPublic && !archived ? `<a class="btn" href="${App.page('public.html?event=' + event.id)}" target="_blank" rel="noopener" title="Open the public results page">${App.icon('external')} Public page</a>` : ''}
           ${competition ? `<a class="btn btn-primary" href="${App.page('activity.html?id=' + competition.id + (competition.format === 'score' ? '' : '#board'))}">${App.icon(Forms.FORMATS[competition.format].icon)} Open competition</a>` : ''}
-          ${canConfigure && !single ? `<button class="btn" data-scan-doc>${App.icon('scan')} Scan document</button>` : ''}
-          ${canConfigure ? `<button class="btn" data-edit-event>${App.icon('edit')} Edit event</button>` : ''}
-          ${canConfigure ? `<button class="btn" data-archive-event title="Archive event">${App.icon('archive')} Archive</button>
-          <button class="btn btn-icon btn-danger" data-delete-event title="Delete event" aria-label="Delete event">${App.icon('trash')}</button>` : ''}
+          ${archived ? '' : `<a class="btn" href="${App.page('ops.html?event_id=' + event.id)}" title="Every activity at a glance: judges, progress, go live and finalize">${App.icon('flow')} Live Ops</a>
+          <a class="btn" href="${App.page('control.html?event_id=' + event.id)}" title="Control what the TV / projector shows">${App.icon('monitor')} Big screen</a>`}
+          ${canConfigure ? `<button class="btn ${isPublic ? 'btn-primary' : ''}" data-public title="${isPublic ? 'Shown on the public results page — click to hide' : 'Show standings on the public results page (no sign-in)'}">${App.icon('globe')} ${isPublic ? 'Public: on' : 'Publish results'}</button>` : ''}
+          ${App.moreMenu([
+            { label: 'Print standings', icon: 'print', href: App.page('print.html?type=overall&id=' + event.id), target: '_blank' },
+            { label: 'Print results book', icon: 'file', href: App.page('print.html?type=book&id=' + event.id), target: '_blank' },
+            isPublic && !archived ? { label: 'Open public page', icon: 'external', href: App.page('public.html?event=' + event.id), target: '_blank' } : null,
+            canOwn ? { label: 'Download backup (JSON)', icon: 'download', href: App.apiUrl('events.export', { id: event.id }) } : null,
+            canConfigure ? 'divider' : null,
+            canConfigure ? { label: 'Edit event', icon: 'edit', attrs: 'data-edit-event' } : null,
+            canConfigure && !single ? { label: 'Scan document', icon: 'scan', attrs: 'data-scan-doc' } : null,
+            canConfigure ? { label: 'Archive event', icon: 'archive', attrs: 'data-archive-event' } : null,
+            canConfigure ? 'divider' : null,
+            canConfigure ? { label: 'Delete event…', icon: 'trash', attrs: 'data-delete-event', danger: true } : null,
+          ])}
         </div>
       </div>
       ${event.description ? `<p class="muted" style="margin-top:-8px">${esc(event.description)}</p>` : ''}
@@ -81,15 +92,15 @@
       <div class="tabs" role="tablist">
         <button data-tab="overview">Overview</button>
         <button data-tab="activities">${single ? 'Competition' : `Activities<span class="count">${activities.length}</span>`}</button>
-        <button data-tab="teams">Teams<span class="count">${teams.length}</span></button>
+        ${overallOn ? `<button data-tab="teams">Groups<span class="count">${teams.length}</span></button>` : ""}
         <button data-tab="codes" ${canConfigure ? '' : 'hidden'}>Access codes<span class="count">${codes.length}</span></button>
-        <button data-tab="standings">${single ? 'Standings' : 'Overall standings'}</button>
+        <button data-tab="standings">${overallOn ? 'Overall standings' : 'Results'}</button>
         ${seeLogs() ? '<button data-tab="logs">Activity logs</button>' : ''}
       </div>
 
       <section data-panel="overview">${renderOverview(canConfigure)}</section>
       <section data-panel="activities" hidden>${renderActivities(activities, canConfigure)}</section>
-      <section data-panel="teams" hidden>${renderTeams(teams, canConfigure)}</section>
+      ${overallOn ? `<section data-panel="teams" hidden>${renderTeams(teams, canConfigure)}</section>` : ""}
       <section data-panel="codes" hidden>${canConfigure ? renderCodes(judges, facilitators, activities) : ''}</section>
       <section data-panel="standings" hidden><div id="standings">${App.loading('Computing standings…')}</div></section>
       ${seeLogs() ? '<section data-panel="logs" hidden><div id="logs-root"></div></section>' : ''}
@@ -97,6 +108,7 @@
 
     if (seeLogs()) Logs.mount(App.$('#recent-logs', view), { eventId, compact: true, limit: 6 });
 
+    App.bindMenus(view);
     bind(canConfigure, canOwn);
     let logsMounted = false;
     App.tabs(view, (tab) => {
@@ -142,11 +154,11 @@
     const steps = [
       single
         ? { done: activities.length > 0, title: 'Competition', text: activities[0] ? `One competition, decided by ${Forms.FORMATS[activities[0].format || 'score'].label.toLowerCase()}.` : 'Save the event again to create its competition.', action: open }
-        : { done: activities.length > 0, title: 'Add the activities', text: activities.length ? `${activities.length} activit${activities.length === 1 ? 'y' : 'ies'} in this event.` : 'Add each activity and choose how it is decided.', action: `<button class="btn btn-sm" data-add-activity>${App.icon('plus')} Add activity</button>` },
-      { done: teams.length > 0, title: single ? 'Add the teams (optional)' : 'Add the teams', text: teams.length ? `${teams.length} team${teams.length === 1 ? '' : 's'} competing.` : (single ? 'Only needed if contestants represent colleges or departments.' : 'Colleges or departments that earn overall points.'), action: `<button class="btn btn-sm" data-add-team>${App.icon('plus')} Add team</button>` },
+        : { done: activities.length > 0, title: 'Add the activities', text: activities.length ? `${activities.length} activit${activities.length === 1 ? 'y' : 'ies'} in this event.` : 'List every competition (e.g. Mobile Legends, chess, programming contest, dance) and how each one is decided.', action: `<button class="btn btn-sm" data-add-activity>${App.icon('plus')} Add activities</button>` },
+      Number(data.event.has_overall ?? 1) === 1 ? { done: teams.length > 0, title: 'Add the groups (departments, tribes…)', text: teams.length ? `${teams.length} group${teams.length === 1 ? '' : 's'} competing for the overall title · ${data.event.points_mode === 'countdown' ? 'countdown points (1st = ' + teams.length + ')' : 'points per place: ' + JSON.parse(data.event.placement_points || '[]').join(', ')}` : 'The departments, tribes or colleges that compete. Every participant plays for one of them.', action: `<button class="btn btn-sm" data-add-team>${App.icon('plus')} Add group</button>` } : null,
       { done: activities.length > 0 && withCriteria === scored.length && withMatches === matchBased.length, title: single ? 'Criteria, contestants & brackets' : 'Criteria & brackets', text: activities.length ? [scored.length ? `${withCriteria} of ${scored.length} score-based ${single ? 'competition has' : 'activities have'} criteria` : '', matchBased.length ? `${withMatches} of ${matchBased.length} brackets / fixtures created` : ''].filter(Boolean).join(' · ') || 'Ranking only needs contestants.' : 'Add activities first.', action: single ? open : `<button class="btn btn-sm" data-goto="activities">${App.icon('list')} Open activities</button>` },
       { done: scored.length === 0 ? true : judges.length > 0 && withJudges === scored.length, title: 'Give access codes', text: scored.length ? (judges.length ? `${judges.length} judge code${judges.length === 1 ? '' : 's'} · ${withJudges} of ${scored.length} score-based activities have judges.` : 'Generate codes for judges and facilitators — no accounts needed.') : 'No judges needed — brackets and rankings are recorded by facilitators.', action: `<button class="btn btn-sm btn-primary" data-bulk-codes>${App.icon('key')} Give access codes</button>` },
-    ];
+    ].filter(Boolean);
     const done = steps.filter((s) => s.done).length;
 
     return `
@@ -155,7 +167,7 @@
           ${canConfigure ? `
           <div class="card">
             <div class="card-head">
-              <div><h3>Event setup</h3><div class="muted small">${done === steps.length ? 'Everything is ready — open scoring on each activity when it starts.' : `${done} of ${steps.length} steps complete`}</div></div>
+              <div><h3>Event setup</h3><div class="muted small">${done === steps.length ? 'Everything is ready — take each activity live when it starts (Live Ops shows them all).' : `${done} of ${steps.length} steps complete`}</div></div>
               <div class="progress" style="width:160px"><span style="width:${Math.round((done / steps.length) * 100)}%"></span></div>
             </div>
             <ol class="setup-steps">
@@ -184,7 +196,7 @@
 
   function renderActivities(activities, canConfigure) {
     const single = data.event.structure === 'single';
-    const add = canConfigure && !single ? `<button class="btn btn-primary" data-add-activity>${App.icon('plus')} Add activity</button>` : '';
+    const add = canConfigure && !single ? `<button class="btn btn-primary" data-add-activity>${App.icon('plus')} Add activities</button>` : '';
     if (!activities.length) {
       return `<div class="card">${App.empty('No activities yet', 'Add the activities of this event — score-based, bracket, round robin or ranking.', 'list')}
         <div class="row" style="justify-content:center;padding-bottom:28px">${add ? `<button class="btn" data-scan-doc>${App.icon('scan')} Scan document</button>` : ''}${add}</div></div>`;
@@ -201,33 +213,38 @@
           const fmt = Forms.FORMATS[format];
           const ready = format === 'score' ? Number(a.criteria) && Number(a.contestants) && Number(a.judges)
             : ['bracket', 'round_robin'].includes(format) ? Number(a.matches) > 0 : Number(a.contestants) > 0;
-          const missing = format === 'score'
-            ? [!Number(a.criteria) && 'criteria', !Number(a.contestants) && 'contestants', !Number(a.judges) && 'judges']
-            : ['bracket', 'round_robin'].includes(format) ? [Number(a.contestants) < 2 && 'contestants', !Number(a.matches) && (format === 'bracket' ? 'bracket' : 'fixtures')] : [!Number(a.contestants) && 'contestants'];
+          // what still has to be set up, each linked to the tab where it is done
+          const missing = (format === 'score'
+            ? [!Number(a.criteria) && ['criteria', 'criteria'], !Number(a.contestants) && ['contestants', 'contestants'], !Number(a.judges) && ['judges', 'judges']]
+            : ['bracket', 'round_robin'].includes(format) ? [Number(a.contestants) < 2 && ['contestants', 'contestants'], !Number(a.matches) && [format === 'bracket' ? 'bracket' : 'fixtures', 'board']] : [!Number(a.contestants) && ['contestants', 'contestants']]).filter(Boolean);
+          const source = a.source_activity_id ? activities.find((x) => Number(x.id) === Number(a.source_activity_id)) : null;
+          const certified = !!a.certified_at;
           const facts = format === 'score'
             ? `<span><b>${a.criteria}</b> criteria${Number(a.criteria) ? ` (${num(total)} pts)` : ''}</span><span><b>${a.contestants}</b> contestants</span><span><b>${a.submitted}/${a.judges}</b> judges submitted</span>`
             : ['bracket', 'round_robin'].includes(format)
               ? `<span><b>${a.contestants}</b> contestants</span><span><b>${a.matches_done}/${a.matches}</b> ${format === 'bracket' ? 'matches' : 'games'} done</span>`
               : `<span><b>${a.contestants}</b> contestants</span><span><b>${a.results}</b> results entered</span>`;
-          const openLabel = format === 'score' ? (a.status === 'closed' ? 'Reopen scoring' : 'Open scoring') : (a.status === 'closed' ? 'Reopen' : 'Start');
-          const closeLabel = format === 'score' ? 'Close scoring' : 'Finalize';
+          const openLabel = a.status === 'closed' ? 'Reopen' : App.STATUS_ACTION.open;
+          const setupLinks = missing.map(([label, tab]) => `<a href="${App.page('activity.html?id=' + a.id + '#' + tab)}">${esc(label)}</a>`).join(', ');
           return `
           <article class="card activity-item">
             <div class="row" style="align-items:flex-start;flex-wrap:nowrap">
               <span class="order">${i + 1}</span>
               <div class="grow" style="min-width:0">
-                <div class="row" style="gap:8px">${App.badge(a.status, format === 'score' ? null : App.MATCH_STATUS[a.status])}<span class="badge badge-format no-dot">${App.icon(fmt.icon)} ${esc(fmt.label)}</span>${a.nature ? `<span class="badge badge-format no-dot">${esc(a.nature)}</span>` : ''}${Number(a.counts_to_overall) ? '' : '<span class="badge no-dot">Not in overall</span>'}</div>
+                <div class="row" style="gap:8px">${App.activityBadge(a)}<span class="badge badge-format no-dot">${App.icon(fmt.icon)} ${esc(fmt.label)}</span>${a.nature ? `<span class="badge badge-format no-dot">${esc(a.nature)}</span>` : ''}${source ? `<span class="badge badge-format no-dot" title="Finalists come from ${esc(source.title)}">${App.icon('flow')} Round after ${esc(source.title)}</span>` : ''}${Number(a.counts_to_overall) ? '' : '<span class="badge no-dot">Not in overall</span>'}</div>
                 <h3 style="margin-top:6px"><a href="${App.page('activity.html?id=' + a.id)}">${esc(a.title)}</a></h3>
                 <div class="facts">
                   ${a.schedule_at ? `<span>${esc(App.fmtDateTime(a.schedule_at))}</span>` : ''}
                   ${a.venue ? `<span>${esc(a.venue)}</span>` : ''}
                   ${facts}
                 </div>
-                ${!ready && a.status === 'pending' ? `<div class="small" style="margin-top:6px">Setup needed: ${missing.filter(Boolean).join(', ')}</div>` : ''}
+                ${!ready && a.status === 'pending' ? `<div class="setup-needed small">${App.icon('alert')} Setup needed before it can go live: ${setupLinks}</div>` : ''}
               </div>
             </div>
             <div class="row" style="justify-content:flex-end">
-              ${a.status !== 'open' ? `<button class="btn btn-sm" data-status="open" data-id="${a.id}" ${ready ? '' : 'disabled'}>${openLabel}</button>` : `<button class="btn btn-sm btn-dark" data-status="closed" data-id="${a.id}">${App.icon('lock')} ${closeLabel}</button>`}
+              ${certified ? `<span class="muted small">${App.icon('shield')} Certified${a.certified_by ? ' by ' + esc(a.certified_by) : ''}</span>`
+                : a.status !== 'open' ? `<button class="btn btn-sm" data-status="open" data-id="${a.id}" ${ready ? '' : `disabled title="Setup needed: ${esc(missing.map(([l]) => l).join(', '))}"`}>${openLabel}</button>`
+                : `<button class="btn btn-sm btn-dark" data-status="closed" data-id="${a.id}">${App.icon('lock')} Finalize</button>`}
               <a class="btn btn-sm btn-primary" href="${App.page('activity.html?id=' + a.id + (format === 'score' ? '' : '#board'))}">${format === 'bracket' ? 'Open bracket' : format === 'round_robin' ? 'Open standings' : format === 'ranking' ? 'Open leaderboard' : 'Manage'}</a>
             </div>
           </article>`;
@@ -238,12 +255,12 @@
   /* ---------------------------------------------------------------- teams */
 
   function renderTeams(teams, canConfigure) {
-    const add = canConfigure ? `<button class="btn btn-primary" data-add-team>${App.icon('plus')} Add team</button>` : '';
+    const add = canConfigure ? `<button class="btn btn-primary" data-add-team>${App.icon('plus')} Add group</button>` : '';
     return `
       <div class="card">
-        <div class="card-head"><div><h3>Teams</h3><div class="muted small">Colleges, departments or groups competing for the overall title.</div></div>${add}</div>
+        <div class="card-head"><div><h3>Groups</h3><div class="muted small">Departments, tribes or colleges competing for the overall title. Every placing of their players and teams earns them points.</div></div>${add}</div>
         ${teams.length ? `<div class="table-wrap"><table class="table stackable">
-          <thead><tr><th>Team</th><th>Colour</th><th class="num">Entries</th>${canConfigure ? '<th class="actions"></th>' : ''}</tr></thead>
+          <thead><tr><th>Group</th><th>Colour</th><th class="num">Entries</th>${canConfigure ? '<th class="actions"></th>' : ''}</tr></thead>
           <tbody>${teams.map((t) => `<tr>
             <td class="primary" data-label="Team">${App.entry(t, '', 'md')}</td>
             <td data-label="Colour">${t.color ? `<span class="color-chip"><span style="background:${esc(t.color)}"></span>${esc(t.color)}</span>` : '<span class="muted">—</span>'}</td>
@@ -251,7 +268,7 @@
             ${canConfigure ? `<td class="actions">
               <button class="btn btn-sm" data-edit-team="${t.id}">${App.icon('edit')} Edit</button>
               <button class="btn btn-sm btn-danger" data-delete-team="${t.id}">${App.icon('trash')}</button></td>` : ''}
-          </tr>`).join('')}</tbody></table></div>` : App.empty('No teams yet', 'Add teams to track overall standings.', 'users')}
+          </tr>`).join('')}</tbody></table></div>` : App.empty('No groups yet', 'Add the departments, tribes or colleges that compete for the overall title.', 'users')}
       </div>`;
   }
 
@@ -304,7 +321,7 @@
     const { result } = await App.get('results.overall', { id: eventId, final_only: finalOnly ? 1 : 0 });
     box.innerHTML = `
       <div class="row-between" style="margin-bottom:14px">
-        <label class="check"><input type="checkbox" id="final-only" ${finalOnly ? 'checked' : ''}><span>Only count closed (final) activities</span></label>
+        <label class="check"><input type="checkbox" id="final-only" ${finalOnly ? 'checked' : ''}><span>Only count final activities</span></label>
         <span class="live-indicator">Live · updated ${new Date().toLocaleTimeString()}</span>
       </div>
       ${Results.overall(result)}`;
@@ -326,7 +343,7 @@
 
     on('[data-status]', async (btn) => {
       const status = btn.dataset.status;
-      if (status === 'closed' && !(await App.confirm({ title: 'Close scoring?', message: 'Judges will no longer be able to change scores. Results become final.', confirmText: 'Close scoring', danger: true }))) return;
+      if (status === 'closed' && !(await App.confirm({ title: 'Finalize this activity?', message: 'Judges can no longer change scores and the results become final. You can reopen it until the results are certified.', confirmText: 'Finalize', danger: true }))) return;
       App.setLoading(btn, true);
       try {
         const r = await App.post('activities.status', { id: btn.dataset.id, status });
@@ -377,7 +394,7 @@
     });
 
     on('[data-edit-event]', async () => {
-      const r = await Forms.event(data.event, owners, { activities: data.activities });
+      const r = await Forms.event(data.event, owners, { activities: data.activities, teams: data.teams });
       if (r && r.activity_id && (r.criteriaScanned || !data.activities.length)) location.href = App.page('activity.html?id=' + r.activity_id + (r.criteriaScanned ? '#criteria' : ''));
       else if (r) reload();
     });
@@ -386,8 +403,8 @@
       if (r) reloadTo('activities');
     });
     on('[data-add-activity]', async () => {
-      const r = await Forms.activity(eventId, null, { defaultFormat: data.event.default_format });
-      if (r && r.id) location.href = App.page('activity.html?id=' + r.id + (r.criteriaScanned ? '#criteria' : ''));
+      const r = await Forms.addActivities(eventId, { existing: data.activities });
+      if (r && r.created) reloadTo('activities');
     });
     on('[data-add-team]', async () => (await Forms.team(eventId)) && reload());
     on('[data-edit-team]', async (b) => (await Forms.team(eventId, data.teams.find((t) => t.id == b.dataset.editTeam))) && reload());
@@ -417,7 +434,7 @@
       const makePublic = Number(data.event.is_public) !== 1;
       if (makePublic && !(await App.confirm({
         title: 'Publish results?',
-        message: `Anyone with the link can see <strong>${esc(data.event.title)}</strong> on the public results page: the activities, overall standings, brackets and rankings as they happen. Score-based results appear only when the activity is <strong>closed (final)</strong>, and judges’ scores are never shown.`,
+        message: `Anyone with the link can see <strong>${esc(data.event.title)}</strong> on the public results page: the activities, overall standings, brackets and rankings as they happen. Score-based results appear only when the activity is <strong>final</strong>, and judges’ scores are never shown.`,
         confirmText: 'Publish',
       }))) return;
       App.setLoading(b, true);
@@ -442,12 +459,12 @@
     if (!eventId) throw new Error('No event selected.');
     await load();
 
-    // Just created: go straight to adding the first activity (with its format choices).
+    // Just created: list all its activities at once, each with the way it is decided.
     if (App.param('new') === '1' && data.can_configure && data.event.structure !== 'single') {
       history.replaceState(null, '', location.pathname + '?id=' + eventId + '#activities');
       App.$('.tabs [data-tab="activities"]', view)?.click();
-      const r = await Forms.activity(eventId, null, { firstActivity: true, defaultFormat: data.event.default_format });
-      if (r && r.id) location.href = App.page('activity.html?id=' + r.id + (r.criteriaScanned ? '#criteria' : ''));
+      const r = await Forms.addActivities(eventId, { existing: data.activities, firstTime: true });
+      if (r && r.created) reloadTo('activities');
     }
   } catch (err) {
     view.innerHTML = `<div class="alert alert-error">${esc(err.message)}</div>`;

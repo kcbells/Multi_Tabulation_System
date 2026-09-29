@@ -62,7 +62,7 @@
     document.title = event.title + ' · Live results';
     const hasTeams = overall.standings.length > 0;
     view.innerHTML = `
-      <div class="crumbs"><a href="public.html">All events</a> / ${esc(event.title)}</div>
+      ${App.pathBar({ back: { href: 'public.html', label: 'all events' }, trail: [{ label: 'All events', href: 'public.html' }, { label: event.title }] })}
       <section class="page-head">
         <div>
           <div class="eyebrow">${event.status === 'ongoing' ? 'Happening now' : esc(event.status)}</div>
@@ -95,7 +95,7 @@
       return `
         <a class="card pub-card" href="?activity=${a.id}">
           <div class="card-body">
-            <div class="row-between">${stateBadge(liveStatus(a.status, a.winners.length > 0))}<span class="pub-format">${App.icon(FORMAT_ICON[a.format] || 'list')} ${FORMAT[a.format] || ''}</span></div>
+            <div class="row-between">${a.certified ? App.activityBadge(a) : stateBadge(liveStatus(a.status, a.winners.length > 0))}<span class="pub-format">${App.icon(FORMAT_ICON[a.format] || 'list')} ${FORMAT[a.format] || ''}</span></div>
             <h3>${esc(a.title)}</h3>
             <div class="pub-meta">
               ${a.schedule_at ? `<span>${App.icon('clock')} ${esc(App.fmtDateTime(a.schedule_at))}</span>` : ''}
@@ -123,7 +123,7 @@
       <div class="card"><div class="card-body">${Charts.bars(s.map((t) => ({ label: t.name, value: t.total, display: App.pts(t.total), rank: t.rank, medal: t.total > 0, look: t })), { title: 'Overall points' })}</div></div>
       <div class="card">
         <div class="table-wrap"><table class="table">
-          <thead><tr><th>Rank</th><th>Team</th><th class="num" title="1st / 2nd / 3rd places">Places<br><span class="muted">1st/2nd/3rd</span></th><th class="num">Points</th></tr></thead>
+          <thead><tr><th>Rank</th><th>Group</th><th class="num" title="1st / 2nd / 3rd places">Places<br><span class="muted">1st/2nd/3rd</span></th><th class="num">Points</th></tr></thead>
           <tbody>${s.map((t) => `<tr class="${t.total > 0 && t.rank <= 3 ? 'rank-' + t.rank : ''}">
             <td>${t.total > 0 ? rankPill(t.rank) : '<span class="muted">—</span>'}</td>
             <td class="name-col">${App.entry(t)}</td>
@@ -141,13 +141,13 @@
     scope = a.event_id;
     document.title = a.title + ' · Live results';
     view.innerHTML = `
-      <div class="crumbs"><a href="public.html">All events</a> / <a href="?event=${d.event.id}">${esc(d.event.title)}</a> / ${esc(a.title)}</div>
+      ${App.pathBar({ back: { href: '?event=' + d.event.id, label: d.event.title }, trail: [{ label: 'All events', href: 'public.html' }, { label: d.event.title, href: '?event=' + d.event.id }, { label: a.title }] })}
       <section class="page-head">
         <div>
           <div class="eyebrow">${esc(FORMAT[a.format] || '')}${a.nature ? ' · ' + esc(a.nature) : ''}</div>
           <h1>${esc(a.title)}</h1>
           <div class="meta">
-            ${stateBadge(liveStatus(a.status, d.rows.some((r) => r.rank)))}
+            ${a.certified ? App.activityBadge(a) : stateBadge(liveStatus(a.status, d.rows.some((r) => r.rank)))}
             ${a.schedule_at ? `<span>${App.icon('clock')} ${esc(App.fmtDateTime(a.schedule_at))}</span>` : ''}
             ${a.venue ? `<span>${esc(a.venue)}</span>` : ''}
           </div>
@@ -177,9 +177,14 @@
     const podium = (a.format !== 'bracket' || d.complete) && ranked.length
       ? Charts.podium(ranked.map((r) => ({ rank: r.rank, name: r.name, sub: sub(r), value: r.display, color: r.color, photo: r.photo })))
       : '';
-    const official = a.status === 'closed'
-      ? `<div class="standings-note">${App.icon('check')}<span><strong>Final results.</strong> Ties share the same rank.</span></div>`
-      : `<div class="standings-note">${App.icon('clock')}<span><strong>Live</strong> — updates by itself as results come in.</span></div>`;
+    const official = (a.certified
+      ? `<div class="standings-note certified">${App.icon('shield')}<span><strong>Certified official results.</strong> Signed off by the organizers.</span></div>`
+      : a.status === 'closed'
+        ? `<div class="standings-note">${App.icon('check')}<span><strong>Final results.</strong></span></div>`
+        : `<div class="standings-note">${App.icon('clock')}<span><strong>Live</strong> — updates by itself as results come in.</span></div>`)
+      + (d.awards && d.awards.length ? `<div class="card"><div class="card-head"><h3>${App.icon('star')} Special awards</h3></div>
+          <ul class="award-list">${d.awards.map((w) => `<li><span class="award-icon">${App.icon('star')}</span><div><strong>${esc(w.name)}</strong></div>
+            <div class="award-winners">${w.winners.map((x) => `<div>${App.entry(x, sub(x), 'xs')}</div>`).join('')}</div></li>`).join('')}</ul></div>` : '');
 
     if (a.format === 'bracket') {
       return `${official}${podium}

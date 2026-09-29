@@ -44,11 +44,33 @@ final class ScoreRepository extends Repository
         );
     }
 
-    /** @param array<int, array{contestant_id:int, criterion_id:int, score:?float}> $rows null score clears the cell */
-    public function saveMany(int $judgeId, array $rows): void
+    /**
+     * @param array<int, array{contestant_id:int, criterion_id:int, score:?float}> $rows null score clears the cell
+     * Changes to a score that was already entered go to score_history (and every entry once the
+     * judge's submission was unlocked), so corrections can always be traced.
+     */
+    public function saveMany(int $judgeId, array $rows, int $activityId = 0): void
     {
-        $this->db->transaction(function (Database $db) use ($judgeId, $rows) {
+        $old = [];
+        if ($activityId > 0) {
+            foreach ($this->forJudge($judgeId, $activityId) as $s) {
+                $old[$s['contestant_id'] . ':' . $s['criterion_id']] = (float) $s['score'];
+            }
+        }
+        $afterUnlock = $activityId > 0 && $this->wasUnlocked($judgeId, $activityId);
+        $this->db->transaction(function (Database $db) use ($judgeId, $rows, $activityId, $old, $afterUnlock) {
             foreach ($rows as $r) {
+                if ($activityId > 0) {
+                    $before = $old[$r['contestant_id'] . ':' . $r['criterion_id']] ?? null;
+                    $changed = $before === null ? $r['score'] !== null && $afterUnlock
+                        : $r['score'] === null || abs($before - (float) $r['score']) > 0.001;
+                    if ($changed) {
+                        $db->execute(
+                            'INSERT INTO score_history (activity_id, judge_id, contestant_id, criterion_id, old_score, new_score, after_unlock) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                            [$activityId, $judgeId, $r['contestant_id'], $r['criterion_id'], $before, $r['score'], $afterUnlock ? 1 : 0]
+                        );
+                    }
+                }
                 if ($r['score'] === null) {
                     $db->execute(
                         'DELETE FROM scores WHERE judge_id = ? AND contestant_id = ? AND criterion_id = ?',
@@ -72,6 +94,8 @@ final class ScoreRepository extends Repository
             $db->execute('DELETE s FROM scores s JOIN contestants c ON c.id = s.contestant_id WHERE c.activity_id = ?', [$activityId]);
             $db->execute('DELETE FROM judge_submissions WHERE activity_id = ?', [$activityId]);
             $db->execute('DELETE cs FROM contestant_submissions cs JOIN contestants c ON c.id = cs.contestant_id WHERE c.activity_id = ?', [$activityId]);
+            // a fresh start: new scores are first entries again (the change history itself is kept)
+            $db->execute('DELETE FROM judge_unlocks WHERE activity_id = ?', [$activityId]);
         });
     }
 
@@ -130,11 +154,71 @@ final class ScoreRepository extends Repository
         $this->db->execute('INSERT IGNORE INTO judge_submissions (judge_id, activity_id) VALUES (?, ?)', [$judgeId, $activityId]);
     }
 
-    public function unlock(int $judgeId, int $activityId): void
+    public function unlock(int $judgeId, int $activityId, ?string $by = null): void
     {
         $this->ensureContestantTable();
         $this->db->execute('DELETE FROM judge_submissions WHERE judge_id = ? AND activity_id = ?', [$judgeId, $activityId]);
         $this->db->execute('DELETE cs FROM contestant_submissions cs JOIN contestants c ON c.id = cs.contestant_id WHERE cs.judge_id = ? AND c.activity_id = ?', [$judgeId, $activityId]);
+        $this->db->execute('INSERT INTO judge_unlocks (judge_id, activity_id, unlocked_by) VALUES (?, ?, ?)', [$judgeId, $activityId, $by]);
+    }
+
+    public function wasUnlocked(int $judgeId, int $activityId): bool
+    {
+        return (bool) $this->db->value('SELECT 1 FROM judge_unlocks WHERE judge_id = ? AND activity_id = ? LIMIT 1', [$judgeId, $activityId]);
+    }
+
+    /* ------------------------------------------------ audit trail */
+
+    /** Score changes of an activity, newest first, with judge, contestant and criterion names. */
+    public function history(int $activityId, int $limit = 500): array
+    {
+        return $this->db->all(
+            'SELECT h.id, h.judge_id, ac.name AS judge_name, h.contestant_id, c.number AS contestant_number, c.name AS contestant_name,
+                    h.criterion_id, cr.name AS criterion_name, h.old_score, h.new_score, h.after_unlock, h.changed_at
+             FROM score_history h
+             LEFT JOIN access_codes ac ON ac.id = h.judge_id
+             LEFT JOIN contestants c ON c.id = h.contestant_id
+             LEFT JOIN criteria cr ON cr.id = h.criterion_id
+             WHERE h.activity_id = ? ORDER BY h.changed_at DESC, h.id DESC LIMIT ' . max(1, min(2000, $limit)),
+            [$activityId]
+        );
+    }
+
+    public function unlocks(int $activityId): array
+    {
+        return $this->db->all(
+            'SELECT u.judge_id, ac.name AS judge_name, u.unlocked_by, u.unlocked_at
+             FROM judge_unlocks u LEFT JOIN access_codes ac ON ac.id = u.judge_id
+             WHERE u.activity_id = ? ORDER BY u.unlocked_at DESC',
+            [$activityId]
+        );
+    }
+
+    /* ------------------------------------------------ judges' private notes */
+
+    /** @return array<int, string> contestant id => note */
+    public function notes(int $judgeId, int $activityId): array
+    {
+        $out = [];
+        foreach ($this->db->all(
+            'SELECT n.contestant_id, n.note FROM score_notes n JOIN contestants c ON c.id = n.contestant_id WHERE n.judge_id = ? AND c.activity_id = ?',
+            [$judgeId, $activityId]
+        ) as $r) {
+            $out[(int) $r['contestant_id']] = $r['note'];
+        }
+        return $out;
+    }
+
+    public function saveNote(int $judgeId, int $contestantId, string $note): void
+    {
+        if ($note === '') {
+            $this->db->execute('DELETE FROM score_notes WHERE judge_id = ? AND contestant_id = ?', [$judgeId, $contestantId]);
+            return;
+        }
+        $this->db->execute(
+            'INSERT INTO score_notes (judge_id, contestant_id, note) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE note = VALUES(note)',
+            [$judgeId, $contestantId, $note]
+        );
     }
 
     /** Judges on an activity panel with submission status and number of scored cells. */

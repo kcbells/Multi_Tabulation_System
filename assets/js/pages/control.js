@@ -125,7 +125,14 @@
   /** Page frame, drawn once so the screen monitor never reloads. */
   function renderFrame() {
     view.innerHTML = `
-      <div class="crumbs">${isFacilitator ? '' : `<a href="${App.page('dashboard.html')}">Events</a> / `}<a href="${App.page('event.html?id=' + data.event.id)}">${esc(data.event.title)}</a> / Big screen</div>
+      ${App.pathBar({
+        back: { href: App.page('event.html?id=' + data.event.id), label: isFacilitator ? 'event console' : data.event.title },
+        trail: [
+          isFacilitator ? null : { label: 'Events', href: App.page('dashboard.html') },
+          { label: data.event.title, href: App.page('event.html?id=' + data.event.id) },
+          { label: 'Big screen' },
+        ].filter(Boolean),
+      })}
       <section class="page-head">
         <div>
           <div class="eyebrow">Big screen control</div>
@@ -177,7 +184,7 @@
             <div class="card-body">
               <div class="ctl-scenes">
                 ${SCENES.map((s, i) => `
-                  <button type="button" class="ctl-scene ${state.scene === s.id ? 'on-air' : ''}" data-scene="${s.id}">
+                  <button type="button" class="ctl-scene ${state.scene === s.id ? 'on-air' : ''}" data-scene="${s.id}" ${s.id === 'overall' && data.event.has_overall === false ? 'disabled title="This event has no overall standings"' : ''}>
                     <kbd>${i + 1}</kbd>${App.icon(s.icon)}<strong>${s.label}</strong><small>${s.hint}</small>
                   </button>`).join('')}
               </div>
@@ -320,7 +327,11 @@
   document.addEventListener('keydown', (e) => {
     if (!data || e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input, textarea, select, dialog')) return;
     const n = Number(e.key);
-    if (n >= 1 && n <= SCENES.length) { e.preventDefault(); takeScene(SCENES[n - 1].id); }
+    if (n >= 1 && n <= SCENES.length) {
+      e.preventDefault();
+      if (SCENES[n - 1].id === 'overall' && data.event.has_overall === false) return App.toast('This event has no overall standings.', 'info');
+      takeScene(SCENES[n - 1].id);
+    }
     else if (e.key === 'ArrowRight') { e.preventDefault(); stepContestant(1); }
     else if (e.key === 'ArrowLeft') { e.preventDefault(); stepContestant(-1); }
     else if (e.key === ' ') { e.preventDefault(); revealNext(); }

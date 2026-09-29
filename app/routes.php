@@ -48,6 +48,8 @@ return [
     'events.scan'            => [EventController::class, 'scan', 'POST', $staff],
     'events.document'        => [EventController::class, 'document', 'GET', $managers],
     'events.publish'         => [EventController::class, 'publish', 'POST', $staff],
+    'events.ops'             => [EventController::class, 'ops', 'GET', $managers],
+    'events.export'          => [EventController::class, 'export', 'GET', $staff],
 
     'teams.save'             => [TeamController::class, 'save', 'POST', $staff],
     'teams.delete'           => [TeamController::class, 'delete', 'POST', $staff],
@@ -58,6 +60,12 @@ return [
     'activities.status'      => [ActivityController::class, 'setStatus', 'POST', $managers],
     'activities.judges'      => [ActivityController::class, 'assignJudges', 'POST', $staff],
     'activities.reset'       => [ActivityController::class, 'resetScores', 'POST', $staff],
+    'activities.certify'     => [ActivityController::class, 'certify', 'POST', $staff],
+    'activities.uncertify'   => [ActivityController::class, 'uncertify', 'POST', $staff],
+    'activities.advance'     => [ActivityController::class, 'advance', 'POST', $managers],
+    'activities.awards'      => [ActivityController::class, 'saveAwards', 'POST', $staff],
+    'deductions.save'        => [ActivityController::class, 'addDeduction', 'POST', $managers],
+    'deductions.delete'      => [ActivityController::class, 'deleteDeduction', 'POST', $managers],
 
     'competition.get'        => [CompetitionController::class, 'show', 'GET', $managers],
     'competition.generate'   => [CompetitionController::class, 'generate', 'POST', $managers],
@@ -89,9 +97,12 @@ return [
     'scores.submit_contestant' => [ScoreController::class, 'submitContestant', 'POST', ['judge']],
     'scores.unlock'          => [ScoreController::class, 'unlock', 'POST', $managers],
     'scores.judge_sheet'     => [ScoreController::class, 'judgeSheet', 'GET', $managers],
+    'scores.history'         => [ScoreController::class, 'history', 'GET', $managers],
+    'scores.note'            => [ScoreController::class, 'note', 'POST', ['judge']],
 
     'results.activity'       => [ResultController::class, 'activity', 'GET', $managers],
     'results.overall'        => [ResultController::class, 'overall', 'GET', $managers],
+    'results.standings'      => [ResultController::class, 'standings', 'GET', $managers],
     'results.export'         => [ResultController::class, 'exportActivity', 'GET', $managers],
 
     'logs.list'              => [LogController::class, 'index', 'GET', $managers],

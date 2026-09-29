@@ -29,23 +29,10 @@ try {
         // shared hosting (e.g. InfinityFree): the database is created in the control panel and cannot be created here
     }
     $pdo->exec("USE `{$dbName}`");
-    $sql = (string) file_get_contents(APP_ROOT . '/database/schema.sql');
-    foreach (preg_split('/;\s*(\r?\n|$)/', $sql) as $statement) {
-        $statement = trim((string) preg_replace('/^--.*$/m', '', $statement));
-        if ($statement !== '') {
-            $pdo->exec($statement);
-        }
-    }
+    // Tables, then upgrades for existing installs: new columns first, then performance indexes
+    $upgrades = (new SchemaUpgrader($pdo, $dbName))->upgrade();
+    \App\Core\SchemaGuard::markCurrent();
     $messages[] = 'Database “' . e($dbName) . '” and tables are ready.';
-
-    // Upgrade existing installs: new columns first, then performance indexes
-    $upgrader = new SchemaUpgrader($pdo, $dbName);
-    $upgrades = array_merge(
-        $upgrader->ensureColumns(require APP_ROOT . '/database/columns.php'),
-        $upgrader->ensureColumnTypes(require APP_ROOT . '/database/column_changes.php'),
-        $upgrader->runBackfills(require APP_ROOT . '/database/backfills.php'),
-        $upgrader->ensureIndexes(require APP_ROOT . '/database/indexes.php')
-    );
     $messages[] = $upgrades
         ? 'Database upgraded: ' . e(implode(' ', $upgrades))
         : 'Database structure and indexes are up to date.';

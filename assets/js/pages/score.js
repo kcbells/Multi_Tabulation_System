@@ -55,7 +55,19 @@
   }
 
   const contestantProgress = (c) => sheet.criteria.filter((cr) => scores.has(key(c.id, cr.id))).length;
-  const contestantTotal = (c) => sheet.criteria.reduce((s, cr) => s + (scores.get(key(c.id, cr.id)) || 0), 0);
+  /** 0–10 scale: judges enter 0–10 and each criterion counts for its points (8 on a 40-point criterion = 32). */
+  const scale = () => Number(sheet.activity.score_scale) || 0;
+  const inputMax = (cr) => scale() || Number(cr.max_score);
+  const weight = (cr) => (scale() ? Number(cr.max_score) / scale() : 1);
+  const contestantTotal = (c) => Math.round(sheet.criteria.reduce((s, cr) => s + (scores.get(key(c.id, cr.id)) || 0) * weight(cr), 0) * 100) / 100;
+  /** The judge's own ranking of the contestants they fully scored (ties share a place). */
+  const personalRanks = () => {
+    const done = sheet.contestants.filter((c) => contestantProgress(c) === sheet.criteria.length).map((c) => ({ c, total: contestantTotal(c) }));
+    done.sort((a, b) => b.total - a.total);
+    const ranks = new Map();
+    done.forEach((t, i) => ranks.set(t.c.id, i > 0 && Math.abs(t.total - done[i - 1].total) < 0.0005 ? ranks.get(done[i - 1].c.id) : i + 1));
+    return { ranks, count: done.length };
+  };
   const totalScored = () => sheet.contestants.reduce((s, c) => s + contestantProgress(c), 0);
   const expected = () => sheet.contestants.length * sheet.criteria.length;
 
@@ -68,18 +80,16 @@
 
     let banner = '';
     if (sheet.submitted_at) banner = `<div class="lock-banner green">${App.icon('check')}<div><strong>Scores submitted</strong><div class="small">Submitted ${esc(App.fmtDateTime(sheet.submitted_at))}. Ask the facilitator if a correction is needed.</div></div></div>`;
-    else if (a.status === 'pending') banner = `<div class="lock-banner">${App.icon('lock')}<div><strong>Scoring has not opened yet</strong><div class="small">You can review the criteria and contestants. This page unlocks automatically when scoring opens.</div></div></div>`;
-    else if (a.status === 'closed') banner = `<div class="lock-banner">${App.icon('lock')}<div><strong>Scoring is closed</strong><div class="small">Scores can no longer be changed.</div></div></div>`;
+    else if (a.status === 'pending') banner = `<div class="lock-banner">${App.icon('lock')}<div><strong>Not live yet</strong><div class="small">You can review the criteria and contestants. This page unlocks by itself when the activity goes live.</div></div></div>`;
+    else if (a.status === 'closed') banner = `<div class="lock-banner">${App.icon('lock')}<div><strong>Final — scoring is over</strong><div class="small">Scores can no longer be changed.</div></div></div>`;
 
     view.innerHTML = `
-      <div class="row-between" style="margin-bottom:10px">
-        <a href="${App.page('judge.html')}" class="btn btn-sm btn-ghost">${App.icon('chevronLeft')} My activities</a>
-        ${App.badge(a.status)}
-      </div>
+      ${App.pathBar({ back: { href: App.page('judge.html'), label: 'my activities' }, trail: [{ label: 'My activities', href: App.page('judge.html') }, { label: a.title }] })}
+      <div style="margin-bottom:6px">${App.badge(a.status)}</div>
       <h1>${esc(a.title)}</h1>
       <div class="row muted small" style="margin:4px 0 14px">
         ${a.venue ? `<span>${esc(a.venue)}</span>` : ''}
-        <span>${sheet.contestants.length} contestants · ${sheet.criteria.length} criteria · ${num(maxTotal)} pts</span>
+        <span>${sheet.contestants.length} contestants · ${sheet.criteria.length} criteria · ${num(maxTotal)} pts${scale() ? ` · score each criterion 0–${num(scale())}` : ''}</span>
         ${a.has_file ? `<a href="${App.apiUrl('criteria.file', { activity_id: activityId })}" target="_blank" rel="noopener">${App.icon('file')} Criteria document</a>` : ''}
       </div>
       ${banner}
@@ -129,6 +139,7 @@
             <div class="contestant-name">
               <h2>${esc(c.name)}</h2>
               ${c.team_name && c.team_name !== c.name ? `<div class="muted">${esc(c.team_name)}</div>` : ''}
+              ${c.members ? `<div class="muted small">${App.icon('users')} ${esc(String(c.members).split('\n').join(', '))}</div>` : ''}
               ${c.details ? `<div class="muted small">${esc(c.details)}</div>` : ''}
             </div>
           </div>
@@ -136,13 +147,13 @@
           <div style="margin-top:14px">
             ${sheet.criteria.map((cr, i) => {
               const v = scores.get(key(c.id, cr.id));
-              const max = Number(cr.max_score);
+              const max = inputMax(cr);
               const step = max >= 20 ? 1 : 0.5;
               return `
               <div class="score-item">
                 <div class="top">
                   <div><div class="name">${i + 1}. ${esc(cr.name)}</div>${cr.description ? `<div class="desc">${esc(cr.description)}</div>` : ''}</div>
-                  <span class="score-max">max ${num(max)}</span>
+                  <span class="score-max">${scale() ? `0–${num(max)} · worth ${num(cr.max_score)}%` : `max ${num(max)}`}</span>
                 </div>
                 <div class="score-entry">
                   <input type="range" min="0" max="${max}" step="${step}" value="${v ?? 0}" data-range="${cr.id}" ${locked ? 'disabled' : ''} aria-label="${esc(cr.name)} slider">
@@ -153,6 +164,9 @@
             }).join('')}
           </div>
           <div class="subtotal"><span>Total for ${esc(c.name)}</span><strong data-subtotal>${num(contestantTotal(c))}</strong></div>
+          <label class="field judge-note"><span>${App.icon('edit')} My notes <em>(only you see these)</em></span>
+            <textarea rows="2" maxlength="2000" data-note placeholder="e.g. strong opening, lost time in the Q&amp;A" ${editable() ? '' : 'readonly'}>${esc((sheet.notes || {})[c.id] || '')}</textarea>
+            <span class="hint" data-note-state></span></label>
         </div>
       </article>
 
@@ -171,6 +185,27 @@
     root.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => go(Number(b.dataset.go))));
     root.querySelector('[data-prev]')?.addEventListener('click', () => go(index - 1));
     root.querySelector('[data-submit-contestant]')?.addEventListener('click', (e) => submitContestant(c, e.currentTarget));
+
+    // private notes: saved a moment after typing stops
+    const note = root.querySelector('[data-note]');
+    const noteState = root.querySelector('[data-note-state]');
+    let noteTimer = null;
+    const saveNote = async () => {
+      clearTimeout(noteTimer);
+      const text = note.value.trim();
+      if (text === ((sheet.notes || {})[c.id] || '')) return;
+      try {
+        await App.post('scores.note', { activity_id: activityId, contestant_id: c.id, note: text });
+        sheet.notes = { ...(sheet.notes || {}), [c.id]: text };
+        noteState.textContent = 'Note saved';
+      } catch (err) {
+        noteState.textContent = 'Not saved yet — check your connection';
+      }
+    };
+    if (editable()) {
+      note.addEventListener('input', () => { noteState.textContent = ''; clearTimeout(noteTimer); noteTimer = setTimeout(saveNote, 900); });
+      note.addEventListener('blur', saveNote);
+    }
 
     const numbers = root.querySelectorAll('[data-score]');
     numbers.forEach((input, i) => {
@@ -224,9 +259,7 @@
     const root = App.$('#mode-root', view);
     const maxTotal = sheet.criteria.reduce((s, c) => s + Number(c.max_score), 0);
     const totals = sheet.contestants.map((c) => ({ c, total: contestantTotal(c), complete: contestantProgress(c) === sheet.criteria.length }));
-    const sorted = [...totals].filter((t) => t.complete).sort((a, b) => b.total - a.total);
-    const rankOf = new Map();
-    sorted.forEach((t, i) => rankOf.set(t.c.id, i > 0 && Math.abs(t.total - sorted[i - 1].total) < 0.0005 ? rankOf.get(sorted[i - 1].c.id) : i + 1));
+    const rankOf = personalRanks().ranks;
 
     root.innerHTML = `
       <div class="card" style="margin-top:12px">
@@ -234,7 +267,7 @@
         <div class="table-wrap">
           <table class="table">
             <thead><tr><th>No.</th><th>Contestant</th>
-              ${sheet.criteria.map((cr) => `<th class="num">${esc(cr.name)}<br><span class="muted">/${num(cr.max_score)}</span></th>`).join('')}
+              ${sheet.criteria.map((cr) => `<th class="num">${esc(cr.name)}<br><span class="muted">/${num(inputMax(cr))}</span></th>`).join('')}
               <th class="num">Total<br><span class="muted">/${num(maxTotal)}</span></th><th class="num">Your rank</th></tr></thead>
             <tbody>
               ${totals.map(({ c, total, complete }, i) => `
@@ -357,14 +390,18 @@
   async function submitContestant(c, btn) {
     await flush();
     if (pending.size) return App.toast('Some scores are not saved yet. Check your connection and try again.', 'error');
-    const rows = sheet.criteria.map((cr) => `<tr><td>${esc(cr.name)}</td><td class="num"><strong>${num(scores.get(key(c.id, cr.id)) ?? 0)}</strong> / ${num(cr.max_score)}</td></tr>`).join('');
+    const rows = sheet.criteria.map((cr) => `<tr><td>${esc(cr.name)}</td><td class="num"><strong>${num(scores.get(key(c.id, cr.id)) ?? 0)}</strong> / ${num(inputMax(cr))}</td></tr>`).join('');
+    // a quick check before locking: where this total puts the contestant among the judge's own scores
+    const { ranks, count } = personalRanks();
+    const place = ranks.get(c.id);
     const ok = await App.modal({
       title: `Submit ${c.name}?`,
       submitText: 'Submit scores',
       onSubmit: () => true,
       body: `<p>After submitting you can no longer change the scores for <strong>${esc(c.name)}</strong>.</p>
         <div class="table-wrap"><table class="table"><thead><tr><th>Criterion</th><th class="num">Score</th></tr></thead>
-        <tbody>${rows}<tr><td><strong>Total</strong></td><td class="num"><strong>${num(contestantTotal(c))}</strong></td></tr></tbody></table></div>`,
+        <tbody>${rows}<tr><td><strong>Total</strong></td><td class="num"><strong>${num(contestantTotal(c))}</strong> / ${num(sheet.criteria.reduce((s, cr) => s + Number(cr.max_score), 0))}</td></tr></tbody></table></div>
+        ${place && count > 1 ? `<div class="alert alert-info" style="margin-top:12px">With this total, <strong>${esc(c.name)}</strong> is <strong>#${place}</strong> of the ${count} contestants you have fully scored. Open <em>Summary</em> to compare before submitting.</div>` : ''}`,
     });
     if (ok !== true) return;
     App.setLoading(btn, true);

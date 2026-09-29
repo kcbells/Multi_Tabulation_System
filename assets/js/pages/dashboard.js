@@ -42,7 +42,7 @@
       <div class="stats">
         ${stat('calendar', events.length, 'Total events', true)}
         ${stat('trophy', ongoing, 'Ongoing events')}
-        ${stat('scan', openActs, 'Scoring open now')}
+        ${stat('scan', openActs, 'Live now')}
         ${stat('users', judges, 'Judges')}
       </div>
 

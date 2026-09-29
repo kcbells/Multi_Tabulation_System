@@ -30,7 +30,7 @@ final class DisplayController extends Controller
         ], (new ActivityRepository())->forEvent((int) $event['id']));
         $display = (new DisplayRepository())->get((int) $event['id']);
         $this->ok([
-            'event' => ['id' => (int) $event['id'], 'title' => $event['title'], 'venue' => $event['venue'], 'status' => $event['status'], 'is_public' => (bool) ($event['is_public'] ?? false)],
+            'event' => ['id' => (int) $event['id'], 'title' => $event['title'], 'venue' => $event['venue'], 'status' => $event['status'], 'is_public' => (bool) ($event['is_public'] ?? false), 'has_overall' => (int) ($event['has_overall'] ?? 1) === 1],
             'activities' => $activities,
             'state' => DisplayScene::normalize($display['state']),
             'scenes' => DisplayScene::SCENES,
