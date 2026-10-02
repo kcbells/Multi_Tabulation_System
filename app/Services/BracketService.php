@@ -73,36 +73,27 @@ final class BracketService
     }
 
     /**
-     * Round-1 pairs for contestants in order.
-     * Real matches come first (1 v 2, 3 v 4 …), then the odd one out; empty spots sit beside a
-     * filled spot so nobody passes two rounds without playing.
+     * Round-1 pairs for contestants in seed order (1st = top seed), standard tournament seeding:
+     * 1 v 8, 4 v 5, 2 v 7, 3 v 6 … Byes go to the top seeds, the top two seeds can only meet in
+     * the final, and since the bracket is the smallest power of two that fits, every round-2
+     * match has two real contestants — no one skips a semifinal and the third-place match is played.
      * @param int[] $ids
      * @return array<int, array{0:?int,1:?int}>
      */
     public static function layout(array $ids, int $size): array
     {
-        $units = [];
-        for ($i = 0; $i + 1 < count($ids); $i += 2) {
-            $units[] = [$ids[$i], $ids[$i + 1]];
-        }
-        $bye = count($ids) % 2 === 1 ? [end($ids), null] : null;
-        $spots = intdiv($size, 2);                       // round-1 matches
-        $pairs = intdiv($spots, 2);                      // round-2 matches (0 when size is 2)
-        if ($pairs === 0) {
-            return $units ?: [$bye];
-        }
-        $voids = $spots - count($units) - ($bye ? 1 : 0);
-        $full = $pairs - $voids;                         // round-2 matches fed by two filled spots
-        $filled = $units;
-        if ($bye) {
-            // the bye goes into a full pair, so its winner still has to play next round
-            array_splice($filled, $voids > 0 ? max(0, 2 * $full - 1) : count($filled), 0, [$bye]);
+        $order = [1];
+        while (count($order) < $size) {
+            $next = [];
+            $sum = 2 * count($order) + 1;
+            foreach ($order as $seed) {
+                array_push($next, $seed, $sum - $seed);
+            }
+            $order = $next;
         }
         $out = [];
-        $k = 0;
-        for ($p = 0; $p < $pairs; $p++) {
-            $out[] = $filled[$k++] ?? [null, null];
-            $out[] = $p < $full ? ($filled[$k++] ?? [null, null]) : [null, null];
+        for ($i = 0; $i < $size; $i += 2) {
+            $out[] = [$ids[$order[$i] - 1] ?? null, $ids[$order[$i + 1] - 1] ?? null];
         }
         return $out;
     }

@@ -36,8 +36,10 @@ final class AccessCodeRepository extends Repository
     {
         $rows = $this->db->all(
             'SELECT ac.id, ac.code, ac.role, ac.name, ac.is_active, ac.last_used_at, ac.created_at,
-                    GROUP_CONCAT(ja.activity_id) AS activity_ids
-             FROM access_codes ac LEFT JOIN judge_activities ja ON ja.judge_id = ac.id
+                    CONCAT_WS(",", GROUP_CONCAT(DISTINCT ja.activity_id), GROUP_CONCAT(DISTINCT fa.activity_id)) AS activity_ids
+             FROM access_codes ac
+             LEFT JOIN judge_activities ja ON ja.judge_id = ac.id
+             LEFT JOIN facilitator_activities fa ON fa.code_id = ac.id
              WHERE ac.event_id = ? GROUP BY ac.id ORDER BY ac.role DESC, ac.name',
             [$eventId]
         );
@@ -100,22 +102,39 @@ final class AccessCodeRepository extends Repository
     /** Replaces a judge's activity assignments with activities from the same event. */
     public function syncActivities(int $judgeId, int $eventId, array $activityIds): void
     {
+        $this->syncLinks('judge_activities', 'judge_id', $judgeId, $eventId, $activityIds);
+    }
+
+    /** The activities a facilitator handles (their big screens). None = the whole event. */
+    public function syncFacilitatorActivities(int $codeId, int $eventId, array $activityIds): void
+    {
+        $this->syncLinks('facilitator_activities', 'code_id', $codeId, $eventId, $activityIds);
+    }
+
+    /** @return int[] activity ids of a facilitator; empty = the whole event */
+    public function facilitatorActivityIds(int $codeId): array
+    {
+        return array_map('intval', array_column($this->db->all('SELECT activity_id FROM facilitator_activities WHERE code_id = ?', [$codeId]), 'activity_id'));
+    }
+
+    private function syncLinks(string $table, string $column, int $codeId, int $eventId, array $activityIds): void
+    {
         $activityIds = array_values(array_unique(array_map('intval', $activityIds)));
-        $this->db->transaction(function (Database $db) use ($judgeId, $eventId, $activityIds) {
+        $this->db->transaction(function (Database $db) use ($table, $column, $codeId, $eventId, $activityIds) {
             $valid = $activityIds ? array_map('intval', array_column($db->all(
                 'SELECT id FROM activities WHERE event_id = ? AND id IN (' . Database::placeholders($activityIds) . ')',
                 array_merge([$eventId], $activityIds)
             ), 'id')) : [];
             if ($valid) {
                 $db->execute(
-                    'DELETE FROM judge_activities WHERE judge_id = ? AND activity_id NOT IN (' . Database::placeholders($valid) . ')',
-                    array_merge([$judgeId], $valid)
+                    "DELETE FROM $table WHERE $column = ? AND activity_id NOT IN (" . Database::placeholders($valid) . ')',
+                    array_merge([$codeId], $valid)
                 );
             } else {
-                $db->execute('DELETE FROM judge_activities WHERE judge_id = ?', [$judgeId]);
+                $db->execute("DELETE FROM $table WHERE $column = ?", [$codeId]);
             }
             foreach ($valid as $aid) {
-                $db->execute('INSERT IGNORE INTO judge_activities (judge_id, activity_id) VALUES (?, ?)', [$judgeId, $aid]);
+                $db->execute("INSERT IGNORE INTO $table ($column, activity_id) VALUES (?, ?)", [$codeId, $aid]);
             }
         });
     }

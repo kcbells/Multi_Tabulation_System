@@ -1069,8 +1069,9 @@
   };
 
   Forms.accessCode = (eventId, role, activities, code = null) => {
-    const assigned = new Set((code ? code.activity_ids : activities.map((a) => a.id)).map(Number));
     const isJudge = role === 'judge';
+    // a new judge scores every activity; a new facilitator handles the whole event until activities are ticked
+    const assigned = new Set((code ? code.activity_ids : isJudge ? activities.map((a) => a.id) : []).map(Number));
     const r = CODE_ROLES[role] || CODE_ROLES.facilitator;
     return App.modal({
       title: (code ? 'Edit ' : 'New ') + r.title,
@@ -1084,7 +1085,14 @@
               ${activities.length ? activities.map((a) => `
                 <label class="check" style="padding:6px 0"><input type="checkbox" name="activity_ids[]" value="${a.id}" ${assigned.has(Number(a.id)) ? 'checked' : ''}>
                   <span>${esc(a.title)}</span></label>`).join('') : '<p class="muted small">No activities yet — you can assign them later.</p>'}
-            </div>` : '<p class="hint">Facilitators can manage contestants, take activities live and finalize them, monitor judges in Live Ops, add deductions, view live results and run the big screen for this event. They cannot edit criteria or access codes.</p>'}
+            </div>` : `
+            <div class="field"><span class="field-label">Activities this facilitator handles <em>(their big screens)</em></span>
+              ${activities.length ? activities.map((a) => `
+                <label class="check" style="padding:6px 0"><input type="checkbox" name="activity_ids[]" value="${a.id}" ${assigned.has(Number(a.id)) ? 'checked' : ''}>
+                  <span>${esc(a.title)}${a.venue ? ` <span class="muted small">· ${esc(a.venue)}</span>` : ''}</span></label>`).join('') : '<p class="muted small">No activities yet — you can assign them later.</p>'}
+              <p class="hint">Tick the activities in this facilitator's venue: they run only those screens. Leave all unticked to run every screen of the event, including the main screen.</p>
+            </div>
+            <p class="hint">Facilitators can manage contestants, take activities live and finalize them, monitor judges in Live Ops, add deductions, view live results and run the big screen. They cannot edit criteria or access codes.</p>`}
           ${code ? '' : '<p class="hint">An 8-character access code is generated automatically.</p>'}
         </div>`,
       onSubmit: async (data) => {

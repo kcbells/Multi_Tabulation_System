@@ -6,7 +6,8 @@
   const { esc, num } = App;
   const preview = App.param('preview') === '1';
   const eventId = Number(App.param('event_id') || me.user.event_id || 0);
-  const params = { event_id: eventId };
+  // ?screen=<activity id>: the screen of one activity (its own venue); none = the event's main screen
+  const params = { event_id: eventId, screen: Number(App.param('screen') || 0) };
   const PAGE = 5; // leaderboard rows per page; longer lists turn pages by themselves
   const PAGE_SECONDS = 8;
   const POLL_MS = 1500;
@@ -42,9 +43,10 @@
       <div class="sc-idle">
         <img src="${App.url('assets/images/app-icon.png')}" alt="">
         <div class="sc-kicker">${esc(App.session.app.school)}</div>
-        <h1>${esc(d.event.title)}</h1>
+        ${d.screen ? `<div class="sc-kicker">${esc(d.event.title)}</div>` : ''}
+        <h1>${esc(d.screen ? d.screen.title : d.event.title)}</h1>
         <div class="idle-rule"></div>
-        <p>${[d.event.venue, d.event.start_at ? App.dateTimeRange(d.event.start_at, d.event.end_at) : ''].filter(Boolean).map(esc).join(' · ')}</p>
+        <p>${[d.screen?.venue || d.event.venue, d.event.start_at ? App.dateTimeRange(d.event.start_at, d.event.end_at) : ''].filter(Boolean).map(esc).join(' · ')}</p>
       </div>`,
 
     blank: () => '',

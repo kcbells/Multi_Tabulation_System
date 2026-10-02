@@ -16,7 +16,7 @@ use Throwable;
  */
 final class SchemaGuard
 {
-    public const VERSION = '2026-09-29.3';
+    public const VERSION = '2026-10-02.1';
 
     private static function file(?string $database = null): string
     {

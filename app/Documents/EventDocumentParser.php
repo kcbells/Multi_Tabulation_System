@@ -354,9 +354,12 @@ final class EventDocumentParser
                 foreach ($kv as [$key, $value]) {
                     $k = strtolower($key);
                     if (preg_match('/^(category|categories|cluster|division|classification)$/', $k)) {
-                        $category = self::categoryName($value) ?? self::clean($value);
+                        $named = self::categoryName($value) ?? self::clean($value);
+                        // right under an activity it is that activity's category, not the next ones'
                         if ($cur !== null && $sinceStart <= 4) {
-                            $acts[$cur]['category'] = $category;
+                            $acts[$cur]['category'] = $named;
+                        } else {
+                            $category = $named;
                         }
                     } elseif ($cur !== null && preg_match('/^(type|entry|participants?|team size|members?|format of entry)$/', $k)) {
                         $acts[$cur]['details']['Type'] = $value;
@@ -423,9 +426,11 @@ final class EventDocumentParser
 
             // ---- category label or heading ("Category: Esports", "II. PAGEANTRY", "SPORTS EVENTS")
             if (preg_match(self::LABEL_CATEGORY, $bare, $m)) {
-                $category = self::categoryName($m[1]) ?? self::clean($m[1]);
+                $named = self::categoryName($m[1]) ?? self::clean($m[1]);
                 if ($cur !== null && $sinceStart <= 4) {
-                    $acts[$cur]['category'] = $category;
+                    $acts[$cur]['category'] = $named;
+                } else {
+                    $category = $named;
                 }
                 $mode = null;
                 continue;
@@ -600,7 +605,7 @@ final class EventDocumentParser
         $titleKey = self::key($title);
         $seen = [];
         $out = [];
-        foreach ($acts as $a) {
+        foreach (self::splitSoloGroup($acts) as $a) {
             $k = self::key($a['title']);
             if ($k === '' || isset($seen[$k]) || ($titleKey !== '' && $k === $titleKey && count($acts) > 1)) {
                 continue;
@@ -629,6 +634,40 @@ final class EventDocumentParser
             $judges = [];
         }
         return [$out, $judges, $facilitators];
+    }
+
+    /**
+     * "Dance Competition (Solo and Group)", "Singing – Solo/Group", "Solo & Group Singing"
+     * are ranked separately: one activity each, sharing the criteria and rules.
+     */
+    private static function splitSoloGroup(array $acts): array
+    {
+        $both = '(solo|individual)\s*(?:and|&|\/|or|,)\s*(group|team|duo|ensemble)';
+        $out = [];
+        foreach ($acts as $a) {
+            if (!preg_match('/\b' . $both . '\b/iu', $a['title'], $m)) {
+                $out[] = $a;
+                continue;
+            }
+            $base = preg_replace([
+                '/\s*[(\[]\s*(?:categories?\s*[:\-]?\s*)?' . $both . '(?:\s+categor(?:y|ies))?\s*[)\]]/iu', // "Dance (Solo and Group)"
+                '/\s*[-–—:|]\s*' . $both . '(?:\s+categor(?:y|ies))?\s*$/iu',                              // "Singing – Solo/Group"
+                '/\b' . $both . '\b\s*/iu',                                                                 // "Solo & Group Singing"
+            ], '', $a['title'], 1);
+            $base = self::clean((string) $base);
+            if ($base === '') {
+                $out[] = $a;
+                continue;
+            }
+            foreach ([$m[1], $m[2]] as $variant) {
+                $variant = ucfirst(strtolower($variant));
+                $copy = $a;
+                $copy['title'] = $base . ' – ' . $variant;
+                $copy['details']['Type'] = $copy['details']['Type'] ?? $variant;
+                $out[] = $copy;
+            }
+        }
+        return $out;
     }
 
     /** "Judges: Dr. Ana Reyes, Mr. Juan Dela Cruz, Jr. and Ms. Liza Tan" → names */
@@ -1120,7 +1159,7 @@ final class EventDocumentParser
             if ($i > 0 && in_array($w, $small, true)) {
                 continue;
             }
-            if (preg_match('/^(coc|phinma|it|ict|ml|ccje|cea|cite|cma|cahs|cas|csdl|ssc|usg|mr|ms|ii|iii|iv)$/', $w)) {
+            if (preg_match('/^(coc|phinma|it|ict|ml|ccje|cea|cit|cite|sccj|cma|cahs|cas|csdl|ssc|usg|mr|ms|ii|iii|iv)$/', $w)) {
                 $w = strtoupper($w);
                 continue;
             }

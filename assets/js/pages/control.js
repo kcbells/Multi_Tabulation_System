@@ -8,8 +8,19 @@
   document.body.classList.add('ctl-page');
   const isFacilitator = me.user.role === 'facilitator';
   const eventId = Number(App.param('event_id') || me.user.event_id || 0);
-  const params = { event_id: eventId };
-  const screenUrl = App.page('display.html?event_id=' + eventId);
+  // which screen: an activity's own screen (?screen=<activity id>) or the event's main screen
+  let screenId = Number(App.param('screen') || 0);
+  const params = { event_id: eventId, screen: screenId };
+  let screenUrl = '';
+  const setScreen = (id) => {
+    screenId = Number(id) || 0;
+    params.screen = screenId;
+    screenUrl = App.page('display.html?event_id=' + eventId + (screenId ? '&screen=' + screenId : ''));
+    const url = new URL(location.href);
+    if (screenId) url.searchParams.set('screen', screenId); else url.searchParams.delete('screen');
+    history.replaceState(history.state, '', url);
+  };
+  setScreen(screenId);
 
   const SCENES = [
     { id: 'idle', icon: 'image', label: 'Title card', hint: 'Event name, between segments' },
@@ -47,6 +58,8 @@
 
   async function load() {
     data = await App.get('display.control', params);
+    // the server moves a facilitator to the screen of their own activity
+    if ((data.screen?.id || 0) !== screenId) setScreen(data.screen?.id || 0);
     state = data.state;
     if (!activityOf(selected)) selected = state.activity_id || data.activities.find((a) => a.status === 'open')?.id || data.activities[0]?.id || 0;
     screen = await App.get('display.screen', params);
@@ -130,16 +143,20 @@
         trail: [
           isFacilitator ? null : { label: 'Events', href: App.page('dashboard.html') },
           { label: data.event.title, href: App.page('event.html?id=' + data.event.id) },
-          { label: 'Big screen' },
+          { label: data.screen ? 'Big screen · ' + data.screen.title : 'Big screen' },
         ].filter(Boolean),
       })}
       <section class="page-head">
         <div>
-          <div class="eyebrow">Big screen control</div>
-          <h1>${esc(data.event.title)}</h1>
+          <div class="eyebrow">${data.screen ? 'Activity screen' : 'Main screen'} control</div>
+          <h1>${esc(data.screen ? data.screen.title : data.event.title)}</h1>
           <div class="meta"><span class="onair-pill"><i></i>On air</span><span data-onair></span></div>
         </div>
         <div class="row">
+          ${data.screens.length > 1 ? `<label class="ctl-activity"><span>Screen</span>
+            <select data-screen title="Each activity has its own screen for its venue; the main screen is for the overall standings and awarding">
+              ${data.screens.map((x) => `<option value="${x.id}" ${x.id === (data.screen?.id || 0) ? 'selected' : ''}>${x.id ? esc(x.title) + (x.venue ? ' · ' + esc(x.venue) : '') : 'Main screen (whole event)'}</option>`).join('')}
+            </select></label>` : ''}
           <a class="btn btn-primary" href="${screenUrl}" target="coc-screen" rel="opener">${App.icon('external')} Open screen</a>
           <button class="btn" data-copy-link title="Open this link on the computer connected to the TV">${App.icon('copy')} Copy screen link</button>
         </div>
@@ -164,6 +181,18 @@
         <div class="ctl-main" data-panels></div>
       </div>`;
     App.$('[data-copy-link]', view).addEventListener('click', () => App.copy(screenUrl));
+    App.$('[data-screen]', view)?.addEventListener('change', async (e) => {
+      setScreen(e.target.value);
+      selected = 0;
+      lastVersion = null;
+      try {
+        await load();
+        renderFrame(); // new screen link and preview
+        render();
+      } catch (err) {
+        App.fail(err);
+      }
+    });
   }
 
   /** The switcher panels: redrawn after every change. */
@@ -176,7 +205,7 @@
     App.$('[data-panels]', view).innerHTML = `
           <div class="card">
             <div class="card-head"><h3>Scenes</h3>
-              <label class="ctl-activity"><span>Activity</span>
+              <label class="ctl-activity" ${data.screen ? 'hidden' : ''}><span>Activity</span>
                 <select data-activity ${data.activities.length ? '' : 'disabled'}>
                   ${data.activities.length ? data.activities.map((x) => `<option value="${x.id}" ${a && x.id === a.id ? 'selected' : ''}>${esc(x.title)}${x.status === 'open' ? ' (live)' : x.status === 'closed' ? ' (final)' : ''}</option>`).join('') : '<option>No activities yet</option>'}
                 </select></label>

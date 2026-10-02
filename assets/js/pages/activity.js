@@ -56,6 +56,7 @@
           ${certified ? '' : `<div class="status-switch" role="group" aria-label="Activity status" title="Not started → Live (judges can score) → Final (locked)">
             ${['pending', 'open', 'closed'].map((s) => `<button data-set-status="${s}" data-status="${s}" class="${a.status === s ? 'active' : ''}" aria-pressed="${a.status === s}">${App.MATCH_STATUS[s]}</button>`).join('')}
           </div>`}
+          <a class="btn" href="${App.page(`control.html?event_id=${event.id}${single ? '' : '&screen=' + activityId}`)}" title="This activity's own big screen, for the TV in its venue">${App.icon('monitor')} Big screen</a>
           ${canConfigure && a.status === 'closed' && !certified ? `<button class="btn btn-primary" data-certify title="Sign off the final results: they are locked and get a certificate code">${App.icon('shield')} Certify results</button>` : ''}
           ${App.moreMenu([
             { label: 'Print results', icon: 'print', href: App.page(isScore ? `print.html?type=activity&id=${activityId}&drafts=0` : 'print.html?type=board&id=' + activityId), target: '_blank' },

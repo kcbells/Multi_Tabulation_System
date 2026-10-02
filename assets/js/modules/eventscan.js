@@ -173,17 +173,18 @@
           if (p >= 100 && !creeping) { creeping = true; startCreep(); }
         });
         if (!creeping) startCreep();
-        const minimum = reduceMotion() ? 0 : 2600;
-        while (Date.now() - startedAt < minimum) await new Promise((r) => setTimeout(r, 120));
+        // the result is ready: only a short beat so the animation does not flash
+        const minimum = reduceMotion() ? 0 : 600;
+        while (Date.now() - startedAt < minimum) await new Promise((r) => setTimeout(r, 60));
         clearInterval(creep);
         ['upload', 'read', 'details', 'activities'].forEach((s) => setStep(s, 'done'));
         target = 100;
-        await new Promise((r) => setTimeout(r, reduceMotion() ? 100 : 700));
+        await new Promise((r) => setTimeout(r, reduceMotion() ? 0 : 250));
         clearInterval(timer);
         pctEl.textContent = 100;
         barEl.style.width = '100%';
         root.querySelector('.es-scan').classList.add('complete');
-        await new Promise((r) => setTimeout(r, reduceMotion() ? 100 : 650));
+        await new Promise((r) => setTimeout(r, reduceMotion() ? 0 : 200));
         confirmStep();
       } catch (err) {
         clearInterval(timer);
@@ -221,6 +222,9 @@
         step: 0,
         updateDetails: false,
         makeCodes: true,
+        // new events only: overall standings are the user's choice, off like the event form
+        overall: false,
+        groupsText: '',
         event: {
           title: ev.title || base.title || '',
           venue: ev.venue || base.venue || '',
@@ -262,6 +266,7 @@
       const needsWork = (r) => r.include && r.format === 'score' && !r.criteria.filter((c) => String(c.name).trim()).length;
       // score-based criteria must total exactly 100 (the server refuses anything else)
       const badTotal = (r) => r.include && r.format === 'score' && r.criteria.some((c) => String(c.name).trim()) && !Criteria.totalOk(totalOf(r));
+      const groupList = () => [...new Set(state.groupsText.split(/\r?\n/).map((g) => g.trim()).filter(Boolean))];
       const judgesOf = (r) => judges.filter((j) => j.rows.has(r));
       const facsOf = (r) => facilitators.filter((f) => f.rows.has(r));
 
@@ -385,6 +390,16 @@
                 : `<div class="field span-2"><span class="field-label">Project Head</span><input value="${esc(base.owner_name || me.name || '')}" readonly>${headNote}</div>`}
             </div>
           </section>
+          ${existing ? '' : `
+          <section class="es-section">
+            <div class="field overall-box">
+              <label class="check overall-switch"><input type="checkbox" data-overall ${state.overall ? 'checked' : ''}>
+                <span><strong>${App.icon('trophy')} Overall standings</strong>
+                  <span class="muted">Groups — departments, tribes, colleges — compete, and every placing earns points for them. Leave it off to rank each activity on its own.</span></span></label>
+              ${state.overall ? `<label class="field"><span>Groups <em>(one per line — you can add more later in the Groups tab)</em></span>
+                <textarea data-groups rows="5" placeholder="CEA&#10;CIT&#10;SCCJ&#10;CMA&#10;CAHS">${esc(state.groupsText)}</textarea></label>` : ''}
+            </div>
+          </section>`}
           <section class="es-section">
             <div class="es-section-head"><h3>Activities found <span class="muted small">(${rows.length})</span></h3><button type="button" class="btn btn-sm" data-add-activity>${App.icon('plus')} Add activity</button></div>
             ${rows.length ? `<ol class="wz-overview">${rows.map((r, i) => `<li><button type="button" data-go="${i + 1}"><span class="wz-ov-no">${i + 1}</span><span class="wz-ov-title">${esc(r.title || 'Untitled activity')}</span><span class="wz-ov-meta">${esc(Forms.FORMATS[r.format]?.label || '')}${r.criteria.length ? ` · ${r.criteria.length} criteria` : ''}</span></button></li>`).join('')}</ol>`
@@ -468,6 +483,7 @@
               <div><dt>Venue</dt><dd>${esc(existing && !state.updateDetails ? existing.venue || '' : state.event.venue) || '—'}</dd></div>
               <div><dt>Dates</dt><dd>${esc(App.dateTimeRange(existing && !state.updateDetails ? existing.start_at : state.event.start_at, existing && !state.updateDetails ? existing.end_at : state.event.end_at)) || '—'}</dd></div>
               <div><dt>Project Head</dt><dd>${esc(owner ? owner.name : (base.owner_name || me.name || ''))}</dd></div>
+              ${existing ? '' : `<div><dt>Overall standings</dt><dd>${state.overall ? `On${groupList().length ? ` · ${esc(groupList().join(', '))}` : ' · no groups yet (add them in the Groups tab)'}` : 'Off'}</dd></div>`}
             </dl>
           </section>
           ${missingCriteria.length ? `<div class="alert alert-warn">${App.icon('alert')}<span><strong>${missingCriteria.length}</strong> score-based activit${missingCriteria.length === 1 ? 'y has' : 'ies have'} no criteria: ${missingCriteria.map((r) => `<a href="#" data-go="${rows.indexOf(r) + 1}">${esc(r.title)}</a>`).join(', ')}. You can still add them later.</span></div>` : ''}
@@ -540,6 +556,8 @@
         const r = rowOfStep(state.step);
         if (t.dataset.f) {
           state.event[t.dataset.f] = t.value;
+        } else if (t.hasAttribute('data-groups')) {
+          state.groupsText = t.value;
         } else if (t.dataset.cr && r) {
           r.criteria[Number(t.closest('[data-c]').dataset.c)][t.dataset.cr] = t.value;
           const total = root.querySelector('[data-total]');
@@ -571,6 +589,7 @@
         if (t.dataset.r === 'include' && r) { r.include = t.checked; render(); }
         else if (t.dataset.r === 'format' && r) { r.format = t.value; render(); }
         else if (t.hasAttribute('data-update-details')) { state.updateDetails = t.checked; render(); }
+        else if (t.hasAttribute('data-overall')) { state.overall = t.checked; render(); }
         else if (t.hasAttribute('data-make-codes')) { state.makeCodes = t.checked; }
       });
       root.addEventListener('keydown', (e) => {
@@ -694,6 +713,8 @@
           const r = await App.post('events.save', {
             title: val('title'), venue: val('venue'), start_at: val('start_at'), end_at: val('end_at'),
             status: 'upcoming', structure: 'multi', default_format: mainFormat, document_token: scan.token, owner_id: val('owner_id') || '',
+            has_overall: state.overall,
+            groups: state.overall ? [...new Set(state.groupsText.split(/\r?\n/).map((g) => g.trim()).filter(Boolean))] : [],
           });
           eventId = r.id;
         }
@@ -769,7 +790,9 @@
         for (const f of facsToMake) {
           say(`Giving access codes… ${++k} of ${total}: ${f.name}`);
           try {
-            const r = await App.post('codes.save', { event_id: eventId, role: 'facilitator', name: f.name.trim() });
+            // a facilitator named under an activity in the document handles that activity (and its screen)
+            const activityIds = [...(f.rows || [])].filter((x) => idOf.has(x)).map((x) => idOf.get(x));
+            const r = await App.post('codes.save', { event_id: eventId, role: 'facilitator', name: f.name.trim(), activity_ids: activityIds });
             codes.push({ name: f.name.trim(), role: 'Facilitator', code: r.code, activities: [...(f.rows || [])].filter((x) => idOf.has(x)).map((x) => x.title) });
           } catch (err) {
             failed.push(`${f.name}: ${err.message}`);

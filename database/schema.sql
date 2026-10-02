@@ -230,6 +230,24 @@ CREATE TABLE IF NOT EXISTS display_state (
     CONSTRAINT fk_display_event FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Big screen of one activity: activities held in different venues each run their own screen
+CREATE TABLE IF NOT EXISTS activity_display_state (
+    activity_id INT UNSIGNED NOT NULL PRIMARY KEY,
+    state       TEXT NOT NULL,
+    version     INT UNSIGNED NOT NULL DEFAULT 1,
+    updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_activity_display FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Activities a facilitator handles (their screens); a facilitator with none handles the whole event
+CREATE TABLE IF NOT EXISTS facilitator_activities (
+    code_id     INT UNSIGNED NOT NULL,
+    activity_id INT UNSIGNED NOT NULL,
+    PRIMARY KEY (code_id, activity_id),
+    CONSTRAINT fk_fa_code FOREIGN KEY (code_id) REFERENCES access_codes(id) ON DELETE CASCADE,
+    CONSTRAINT fk_fa_activity FOREIGN KEY (activity_id) REFERENCES activities(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Every change to a judge's score after it was first entered (audit trail for unlocks and corrections)
 CREATE TABLE IF NOT EXISTS score_history (
     id            BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

@@ -51,6 +51,9 @@ final class AccessCodeController extends Controller
 
         if ($role === 'judge') {
             $this->codes->syncActivities($id, $eventId, $this->request->array('activity_ids'));
+        } elseif ($this->request->has('activity_ids')) {
+            // the activities this facilitator handles (their big screens); none = the whole event
+            $this->codes->syncFacilitatorActivities($id, $eventId, $this->request->array('activity_ids'));
         }
         Log::record(
             $this->request->int('id') > 0 ? 'code.updated' : 'code.issued',

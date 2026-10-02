@@ -286,7 +286,7 @@
           <span class="code-value">${esc(c.display_code)}</span>
           <button class="btn btn-sm btn-ghost" data-copy="${esc(c.display_code)}" title="Copy code">${App.icon('copy')}</button>
         </div>
-        ${c.role === 'judge' ? `<div>${c.activity_ids.length ? c.activity_ids.map((id) => `<span class="chip">${esc(titleOf[id] || 'Activity')}</span>`).join('') : '<span class="muted small">No activities assigned</span>'}</div>` : ''}
+        <div>${c.activity_ids.length ? c.activity_ids.map((id) => `<span class="chip">${esc(titleOf[id] || 'Activity')}</span>`).join('') : `<span class="muted small">${c.role === 'judge' ? 'No activities assigned' : 'Whole event · every screen'}</span>`}</div>
         <div class="muted small">${c.last_used_at ? 'Last signed in ' + esc(App.fmtDateTime(c.last_used_at)) : 'Not used yet'}</div>
         <div class="row" style="justify-content:flex-end">
           <button class="btn btn-sm" data-edit-code="${c.id}">${App.icon('edit')} Edit</button>
